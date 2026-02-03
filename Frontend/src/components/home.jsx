@@ -36,10 +36,11 @@ const Home = () => {
             A secure, fast, and easy platform to participate in online auctions and
             place bids in real time from any device.
         </p>
-
+        <Link to ="/login">
         <button className="bg-white text-blue-600 px-6 py-3 rounded-lg hover:bg-gray-200 transition text-sm sm:text-base">
             Get Started
         </button>
+        </Link>
         </section>
 
 
