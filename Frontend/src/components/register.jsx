@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link,useNavigate } from "react-router-dom";
 import { FiEye, FiEyeOff } from "react-icons/fi";
 import API from "../services/api";
 
@@ -11,6 +11,8 @@ const Register = () => {
     password: "",
     confirmPassword: "",
   });
+
+  const navigate = useNavigate();
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -66,6 +68,7 @@ const Register = () => {
       );
 
       setSuccessMsg(response.data.message || "Registration successful");
+      navigate("/login");
 
       setFormData({
         firstName: "",
