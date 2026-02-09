@@ -47,7 +47,7 @@ const Login = () => {
       localStorage.setItem("user", JSON.stringify(res.data.user));
 
       // ✅ Redirect to dashboard
-      navigate("/dashboard");
+      navigate("/products");
 
     } catch (err) {
       setError(
