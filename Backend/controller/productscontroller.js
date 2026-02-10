@@ -1,5 +1,22 @@
 import Product from "../models/products.js";
 
+const calculateStatus = (product) => {
+  const now = Date.now();
+  const startTime = new Date(product.auctionStart).getTime();
+
+  // 🛑 Manual close has highest priority
+  if (product.status === "Ended") {
+    return "Ended";
+  }
+
+  // ⏱ Time-based logic (UTC)
+  if (now >= startTime) {
+    return "Active";
+  }
+
+  return "Upcoming";
+};
+
 export const addProduct = async (req, res) => {
   try {
     const {
@@ -9,10 +26,12 @@ export const addProduct = async (req, res) => {
       category,
       condition,
       startingPrice,
+      bidIncrement,
       auctionStart,
       maxRegistrations,
     } = req.body;
 
+    // ✅ Validation
     if (
       !title ||
       !description ||
@@ -27,9 +46,15 @@ export const addProduct = async (req, res) => {
       });
     }
 
-    if (images.length > 5) {
+    // if (images.length > 5) {
+    //   return res.status(400).json({
+    //     message: "Maximum 5 images allowed",
+    //   });
+    // }
+
+    if (bidIncrement !== undefined && bidIncrement < 1) {
       return res.status(400).json({
-        message: "Maximum 5 images allowed",
+        message: "Bid increment must be at least 1",
       });
     }
 
@@ -40,10 +65,13 @@ export const addProduct = async (req, res) => {
       category,
       condition,
       startingPrice,
+      bidIncrement: bidIncrement || 10,
       auctionStart,
       maxRegistrations,
       sellerId: req.user.id,
-      status: "Upcoming", // explicit default
+      status: "Upcoming",
+      currentBid: 0,
+      bidsCount: 0,
     });
 
     await product.save();
@@ -60,28 +88,14 @@ export const addProduct = async (req, res) => {
   }
 };
 
-
 export const getProducts = async (req, res) => {
   try {
     const products = await Product.find();
-    const now = Date.now();
 
-    const updatedProducts = products.map((p) => {
-      // 🛑 MANUAL CLOSE HAS HIGHEST PRIORITY
-      if (p.status === "Ended") {
-        return p.toObject();
-      }
-
-      const startTime = new Date(p.auctionStart).getTime();
-
-      let status = "Upcoming";
-      if (now >= startTime) status = "Active";
-
-      return {
-        ...p.toObject(),
-        status,
-      };
-    });
+    const updatedProducts = products.map((p) => ({
+      ...p.toObject(),
+      status: calculateStatus(p),
+    }));
 
     res.json(updatedProducts);
   } catch (error) {
@@ -91,28 +105,39 @@ export const getProducts = async (req, res) => {
 
 export const getMyProducts = async (req, res) => {
   try {
-    const products = await Product.find({ sellerId: req.user.id });
-    const now = Date.now();
-
-    const updated = products.map((p) => {
-      // 🛑 NEVER REOPEN MANUALLY CLOSED BID
-      if (p.status === "Ended") {
-        return p.toObject();
-      }
-
-      const start = new Date(p.auctionStart).getTime();
-      let status = "Upcoming";
-      if (now >= start) status = "Active";
-
-      return {
-        ...p.toObject(),
-        status,
-      };
+    const products = await Product.find({
+      sellerId: req.user.id,
     });
 
-    res.json(updated);
+    const updatedProducts = products.map((p) => ({
+      ...p.toObject(),
+      status: calculateStatus(p),
+    }));
+
+    res.json(updatedProducts);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch my products" });
+  }
+};
+
+export const getSingleProduct = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({
+        message: "Product not found",
+      });
+    }
+
+    res.json({
+      ...product.toObject(),
+      status: calculateStatus(product),
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to fetch product",
+    });
   }
 };
 
@@ -121,23 +146,31 @@ export const closeBid = async (req, res) => {
     const product = await Product.findById(req.params.id);
 
     if (!product) {
-      return res.status(404).json({ message: "Product not found" });
+      return res.status(404).json({
+        message: "Product not found",
+      });
     }
 
     // 🔐 Only seller can close
     if (product.sellerId.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Not authorized" });
+      return res.status(403).json({
+        message: "Not authorized",
+      });
     }
 
-    // 🛑 Final state
     product.status = "Ended";
     await product.save();
 
     res.json({
       message: "Bidding closed successfully",
-      product,
+      product: {
+        ...product.toObject(),
+        status: "Ended",
+      },
     });
   } catch (error) {
-    res.status(500).json({ message: "Failed to close bid" });
+    res.status(500).json({
+      message: "Failed to close bid",
+    });
   }
 };

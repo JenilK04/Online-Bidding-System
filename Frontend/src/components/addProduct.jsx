@@ -8,71 +8,99 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
     category: "",
     condition: "Used",
     startingPrice: "",
+    bidIncrement: 10, // ✅ default
     auctionStart: "",
     maxRegistrations: "",
   });
 
-  const [images, setImages] = useState([]); // base64 images
+  const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
 
   if (!isOpen) return null;
 
-  // handle text inputs
+  /* =========================
+     HANDLERS
+  ========================== */
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
+    setErrors({ ...errors, [e.target.name]: "" });
   };
 
-  // convert file to base64
-  const convertToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
+  const convertToBase64 = (file) =>
+    new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = () => resolve(reader.result);
-      reader.onerror = (err) => reject(err);
+      reader.onerror = reject;
     });
-  };
 
-  // handle image selection
   const handleImageChange = async (e) => {
     const files = Array.from(e.target.files);
 
-    // optional limits
     if (files.length > 5) {
-      alert("Maximum 5 images allowed");
+      setErrors({ ...errors, images: "Maximum 5 images allowed" });
       return;
     }
 
     const base64Images = [];
     for (let file of files) {
-      const base64 = await convertToBase64(file);
-      base64Images.push(base64);
+      base64Images.push(await convertToBase64(file));
     }
 
     setImages(base64Images);
+    setErrors({ ...errors, images: "" });
   };
 
-  // remove image
   const removeImage = (index) => {
     setImages(images.filter((_, i) => i !== index));
   };
 
-  // submit form
+  /* =========================
+     VALIDATION
+  ========================== */
+  const validate = () => {
+    const newErrors = {};
+
+    if (!form.title.trim()) newErrors.title = "Title is required";
+    if (!form.description.trim())
+      newErrors.description = "Description is required";
+
+    if (!images.length)
+      newErrors.images = "At least one image is required";
+
+    if (form.startingPrice <= 0)
+      newErrors.startingPrice = "Starting price must be greater than 0";
+
+    if (form.bidIncrement < 1)
+      newErrors.bidIncrement = "Bid increment must be at least 1";
+
+    if (form.maxRegistrations <= 0)
+      newErrors.maxRegistrations =
+        "Max registrations must be greater than 0";
+
+    if (!form.auctionStart)
+      newErrors.auctionStart = "Auction start time is required";
+    else if (new Date(form.auctionStart) <= new Date())
+      newErrors.auctionStart =
+        "Auction start must be a future date/time";
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  /* =========================
+     SUBMIT
+  ========================== */
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (images.length === 0) {
-      alert("Please upload at least one image");
-      return;
-    }
+    if (!validate()) return;
 
     setLoading(true);
-
+    try {
       await API.post(
         "/products",
-        {
-          ...form,
-          images, // ✅ base64 array
-        },
+        { ...form, images },
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -81,12 +109,14 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
       );
       onSuccess();
       onClose();
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4">
       <div className="bg-white w-full max-w-2xl rounded-xl shadow-lg max-h-[90vh] overflow-y-auto">
-        
         {/* Header */}
         <div className="flex justify-between items-center border-b px-6 py-4">
           <h2 className="text-xl font-semibold text-gray-800">
@@ -102,30 +132,37 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-
-          <input
-            name="title"
-            placeholder="Product Title"
-            className="input"
-            onChange={handleChange}
-            required
-          />
-
-          <textarea
-            name="description"
-            placeholder="Product Description"
-            className="input h-24"
-            onChange={handleChange}
-            required
-          />
-
-          {/* Image Upload */}
+          {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Product Images
-            </label>
+            <input
+              name="title"
+              placeholder="Product Title"
+              className="input"
+              onChange={handleChange}
+            />
+            {errors.title && (
+              <p className="text-red-500 text-xs">{errors.title}</p>
+            )}
+          </div>
 
-            <label className="inline-flex items-center gap-2 cursor-pointer bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">
+          {/* Description */}
+          <div>
+            <textarea
+              name="description"
+              placeholder="Product Description"
+              className="input h-24"
+              onChange={handleChange}
+            />
+            {errors.description && (
+              <p className="text-red-500 text-xs">
+                {errors.description}
+              </p>
+            )}
+          </div>
+
+          {/* Images */}
+          <div>
+            <label className="inline-flex cursor-pointer bg-indigo-600 text-white px-4 py-2 rounded-lg">
               📷 Choose Images
               <input
                 type="file"
@@ -135,28 +172,27 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
                 className="hidden"
               />
             </label>
+            {errors.images && (
+              <p className="text-red-500 text-xs mt-1">
+                {errors.images}
+              </p>
+            )}
 
-            <p className="text-xs text-gray-500 mt-1">
-              Max 5 images (stored as Base64)
-            </p>
-
-            {/* Preview */}
             {images.length > 0 && (
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 mt-4">
-                {images.map((img, index) => (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 mt-3">
+                {images.map((img, i) => (
                   <div
-                    key={index}
-                    className="relative w-full h-24 border rounded-lg overflow-hidden"
+                    key={i}
+                    className="relative h-24 border rounded-lg overflow-hidden"
                   >
                     <img
                       src={img}
                       alt="preview"
                       className="w-full h-full object-cover"
                     />
-
                     <button
                       type="button"
-                      onClick={() => removeImage(index)}
+                      onClick={() => removeImage(i)}
                       className="absolute top-1 right-1 bg-black/60 text-white text-xs rounded-full px-1"
                     >
                       ✕
@@ -167,6 +203,7 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
             )}
           </div>
 
+          {/* Category + Condition */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <input
               name="category"
@@ -186,33 +223,68 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
             </select>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <input
-              type="number"
-              name="startingPrice"
-              placeholder="Starting Price"
-              className="input"
-              onChange={handleChange}
-              required
-            />
+          {/* Prices */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <input
+                type="number"
+                name="startingPrice"
+                placeholder="Starting Price"
+                className="input"
+                onChange={handleChange}
+              />
+              {errors.startingPrice && (
+                <p className="text-red-500 text-xs">
+                  {errors.startingPrice}
+                </p>
+              )}
+            </div>
 
-            <input
-              type="number"
-              name="maxRegistrations"
-              placeholder="Max Registrations"
-              className="input"
-              onChange={handleChange}
-              required
-            />
+            <div>
+              <input
+                type="number"
+                name="bidIncrement"
+                placeholder="Bid Increment"
+                className="input"
+                onChange={handleChange}
+              />
+              {errors.bidIncrement && (
+                <p className="text-red-500 text-xs">
+                  {errors.bidIncrement}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <input
+                type="number"
+                name="maxRegistrations"
+                placeholder="Max Registrations"
+                className="input"
+                onChange={handleChange}
+              />
+              {errors.maxRegistrations && (
+                <p className="text-red-500 text-xs">
+                  {errors.maxRegistrations}
+                </p>
+              )}
+            </div>
           </div>
 
-          <input
-            type="datetime-local"
-            name="auctionStart"
-            className="input"
-            onChange={handleChange}
-            required
-          />
+          {/* Auction Start */}
+          <div>
+            <input
+              type="datetime-local"
+              name="auctionStart"
+              className="input"
+              onChange={handleChange}
+            />
+            {errors.auctionStart && (
+              <p className="text-red-500 text-xs">
+                {errors.auctionStart}
+              </p>
+            )}
+          </div>
 
           {/* Buttons */}
           <div className="flex justify-end gap-3 pt-4">

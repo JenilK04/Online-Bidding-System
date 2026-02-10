@@ -4,9 +4,9 @@ import{
   addProduct,
   getProducts,
   getMyProducts,
-  closeBid
+  closeBid,
+  getSingleProduct
 } from "../controller/productscontroller.js";
-import e from "express";
 
 const router = express.Router();
 
@@ -18,6 +18,9 @@ router.post("/", verifyToken, addProduct);
 router.get("/my-products", verifyToken, getMyProducts);
 // routes/productRoutes.js
 router.patch("/close/:id", verifyToken, closeBid);
+// routes/productRoutes.js
+router.get("/:id", verifyToken, getSingleProduct);
+
 
 
 export default router;

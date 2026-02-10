@@ -4,8 +4,10 @@ import Home from "./components/home";
 import Register from "./components/register";
 import Login from "./components/login";
 import MyProducts from "./components/myProducts";
+import ViewBid from "./components/viewBid";
 
 import ProtectedRoute from "./routes/protectedroutes";  
+import ProductDetails from "./components/productDetails";
 
 function App() {
   return(
@@ -32,6 +34,25 @@ function App() {
             // </ProtectedRoute>
           }
         />
+
+        <Route
+          path="/products/:id"
+          element={
+            // <ProtectedRoute>
+              <ProductDetails />
+            // </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/my-product/:id"
+          element={
+            // <ProtectedRoute>
+              <ViewBid />
+            // </ProtectedRoute>
+          }
+        />
+
       </Routes>
     </BrowserRouter>
   );

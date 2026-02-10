@@ -43,6 +43,12 @@ const productSchema = new mongoose.Schema(
       default: 0,
     },
 
+    bidIncrement: {
+      type: Number,
+      default: 10, // ₹10 minimum increment
+      min: 1,
+    },
+
     bidsCount: {
       type: Number,
       default: 0,
