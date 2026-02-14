@@ -174,3 +174,70 @@ export const closeBid = async (req, res) => {
     });
   }
 };
+
+export const registerForAuction = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { bidderName } = req.body; // user optional name
+    const userId = req.user.id;
+
+    const product = await Product.findById(id);
+
+    if (!product)
+      return res.status(404).json({ message: "Product not found" });
+
+    if (product.sellerId.toString() === userId)
+      return res.status(400).json({
+        message: "Owner cannot register",
+      });
+
+    if (product.status !== "Upcoming")
+      return res.status(400).json({
+        message: "Registration closed",
+      });
+
+    const alreadyRegistered = product.registeredUsers.some(
+      (u) => u.userId.toString() === userId
+    );
+
+    if (alreadyRegistered)
+      return res.status(400).json({
+        message: "Already registered",
+      });
+
+    if (
+      product.registeredUsers.length >=
+      product.maxRegistrations
+    )
+      return res.status(400).json({
+        message: "Slots full",
+      });
+
+    // ✅ Auto assign bidder number
+    const bidderNumber =
+      product.registeredUsers.length + 1;
+
+    product.registeredUsers.push({
+      userId,
+      bidderNumber,
+      bidderName: bidderName || `Bidder_${bidderNumber}`,
+      registeredAt: new Date(),
+    });
+
+    await product.save();
+
+    res.status(200).json({
+      message: "Registered successfully",
+      bidderNumber,
+    });
+
+  } catch (error) {
+  console.error("🔥 REGISTER ERROR:", error);
+  console.error("🔥 STACK:", error.stack);
+
+  return res.status(500).json({
+    message: error.message,
+  });
+}
+};
+

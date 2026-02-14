@@ -4,7 +4,7 @@ import Navbar from "./navbar";
 import API from "../services/api";
 import useAutoRefresh from "../services/autoRefrash";
 
-// 🕒 Local time formatter (display only, AM/PM)
+// 🕒 Local time formatter
 const formatLocalTime = (utcDate) => {
   return new Date(utcDate).toLocaleString(undefined, {
     day: "2-digit",
@@ -17,7 +17,7 @@ const formatLocalTime = (utcDate) => {
   });
 };
 
-// 🔐 Get logged-in user ID from JWT
+// 🔐 Get logged-in user ID
 const getUserIdFromToken = () => {
   const token = localStorage.getItem("token");
   if (!token) return null;
@@ -37,13 +37,17 @@ const ProductDetails = () => {
   const [bidAmount, setBidAmount] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  // 🔴 Live clock (UTC-safe)
   const [now, setNow] = useState(Date.now());
+
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [bidderName, setBidderName] = useState("");
 
   const userId = getUserIdFromToken();
 
-  // 🔹 Fetch product
+  /* ======================
+     FETCH PRODUCT
+  ======================= */
+
   const fetchProduct = async () => {
     try {
       const res = await API.get(`/products/${id}`);
@@ -56,10 +60,12 @@ const ProductDetails = () => {
     }
   };
 
-  // 🔁 Backend sync every 10s
+  useEffect(() => {
+    fetchProduct();
+  }, [id]);
+
   useAutoRefresh(fetchProduct, 10000);
 
-  // ⏱ Live clock every second
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(Date.now());
@@ -94,16 +100,20 @@ const ProductDetails = () => {
   }
 
   /* ======================
-     REGISTRATION + LIVE TIME
+     LOGIC
   ======================= */
+
+  const registeredCount =
+    product.registeredUsers?.length || 0;
+
+  const remainingSlots =
+    product.maxRegistrations - registeredCount;
 
   const isRegistered = product.registeredUsers?.some(
     (u) => u.userId === userId
   );
 
-  const remainingSlots =
-    product.maxRegistrations -
-    (product.registeredUsers?.length || 0);
+  const isOwner = product.sellerId === userId;
 
   let liveSince = "";
   if (product.status === "Active") {
@@ -118,12 +128,27 @@ const ProductDetails = () => {
   }
 
   /* ======================
-     ACTIONS
+     FUNCTIONS
   ======================= */
 
+  const openRegisterModal = () => {
+    const nextNumber = registeredCount + 1;
+    setBidderName(`Bidder_${nextNumber}`);
+    setShowRegisterModal(true);
+  };
+
   const handleRegister = async () => {
+    if (!bidderName.trim()) {
+      alert("Bidder name cannot be empty");
+      return;
+    }
+
     try {
-      await API.post(`/products/register/${id}`);
+      await API.post(`/products/register/${id}`, {
+        bidderName: bidderName.trim(),
+      });
+
+      setShowRegisterModal(false);
       fetchProduct();
     } catch (err) {
       alert(err.response?.data?.message || "Registration failed");
@@ -145,6 +170,10 @@ const ProductDetails = () => {
     }
   };
 
+  /* ======================
+     UI
+  ======================= */
+
   return (
     <>
       <Navbar />
@@ -152,7 +181,7 @@ const ProductDetails = () => {
       <div className="min-h-screen bg px-4 py-10">
         <div className="max-w-5xl mx-auto bg-white rounded-xl shadow p-6">
 
-          {/* IMAGES (NO BLUR, NO STRETCH) */}
+          {/* IMAGES */}
           <div className="flex gap-4 overflow-x-auto mb-6 border border-gray-200 p-4 rounded-lg">
             {product.images.map((img, i) => (
               <div
@@ -169,7 +198,6 @@ const ProductDetails = () => {
             ))}
           </div>
 
-          {/* TITLE */}
           <h1 className="text-2xl font-bold text-blue-800 mb-2">
             {product.title}
           </h1>
@@ -178,123 +206,144 @@ const ProductDetails = () => {
             {product.description}
           </p>
 
-          {/* AUCTION DETAILS */}
+          {/* DETAILS */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 text-sm">
-
-            <p>
-              <strong>Status:</strong>{" "}
-              <span
-                className={`px-2 py-1 rounded text-xs font-semibold ${
-                  product.status === "Active"
-                    ? "bg-green-100 text-green-700"
-                    : product.status === "Upcoming"
-                    ? "bg-yellow-100 text-yellow-700"
-                    : "bg-red-100 text-red-700"
-                }`}
-              >
-                {product.status}
-              </span>
-            </p>
-
-            <p>
-              <strong>Auction Start:</strong>{" "}
-              {formatLocalTime(product.auctionStart)}
-            </p>
+            <p><strong>Status:</strong> {product.status}</p>
+            <p><strong>Auction Start:</strong> {formatLocalTime(product.auctionStart)}</p>
 
             {product.status === "Active" && (
-              <p>
-                <strong>Live Since:</strong>{" "}
-                <span className="text-blue-600 font-semibold">
-                  {liveSince}
-                </span>
-              </p>
+              <p><strong>Live Since:</strong> {liveSince}</p>
             )}
 
-            <p>
-              <strong>Starting Price:</strong> ₹{product.startingPrice}
-            </p>
+            <p><strong>Starting Price:</strong> ₹{product.startingPrice}</p>
+            <p><strong>Current Bid:</strong> {product.currentBid > 0 ? `₹${product.currentBid}` : "No bids yet"}</p>
+            <p><strong>Bid Increment:</strong> ₹{product.bidIncrement}</p>
+            <p><strong>Total Bids:</strong> {product.bidsCount}</p>
 
-            <p>
-              <strong>Current Bid:</strong>{" "}
-              {product.currentBid > 0
-                ? `₹${product.currentBid}`
-                : "No bids yet"}
-            </p>
+            {/* SLOT DISPLAY */}
+            <div className="mt-2 p-3 bg-gray-50 rounded-lg border">
+              <p>
+                Registered:{" "}
+                <span className="font-semibold text-blue-600">
+                  {registeredCount}
+                </span>{" "}
+                / {product.maxRegistrations}
+              </p>
 
-            <p>
-              <strong>Bid Increment:</strong> ₹{product.bidIncrement}
-            </p>
-
-            <p>
-              <strong>Total Bids:</strong> {product.bidsCount}
-            </p>
-
-            <p>
-              <strong>Remaining Slots:</strong>{" "}
-              <span
-                className={`font-semibold ${
-                  remainingSlots === 0
-                    ? "text-red-600"
-                    : "text-green-600"
-                }`}
-              >
-                {remainingSlots}
-              </span>
-            </p>
+              <p>
+                Remaining:{" "}
+                <span
+                  className={`font-semibold ${
+                    remainingSlots === 0
+                      ? "text-red-600"
+                      : "text-green-600"
+                  }`}
+                >
+                  {remainingSlots}
+                </span>
+              </p>
+            </div>
           </div>
 
-          {/* REGISTER / BID SECTION */}
-          {product.status === "Upcoming" && !isRegistered && remainingSlots > 0 && (
-            <button
-              onClick={handleRegister}
-              className="bg-indigo-600 text-white px-5 py-2 rounded hover:bg-indigo-700 transition"
-            >
-              Register for Auction
-            </button>
+          {/* REGISTER BUTTON */}
+          {product.status === "Upcoming" &&
+            !isOwner &&
+            !isRegistered &&
+            remainingSlots > 0 && (
+              <button
+                onClick={openRegisterModal}
+                className="bg-indigo-600 text-white px-5 py-2 rounded hover:bg-indigo-700 transition"
+              >
+                Register for Auction
+              </button>
           )}
 
-          {product.status === "Active" ? (
-            isRegistered ? (
-              <div className="border-t pt-4">
-                <h3 className="font-semibold mb-2">
-                  Place Your Bid
-                </h3>
+          {/* REGISTERED MESSAGE */}
+          {product.status === "Upcoming" &&
+            isRegistered && (
+              <p className="mt-4 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm">
+                ✅ You are registered. Auction hasn’t started yet.
+              </p>
+          )}
 
-                <div className="flex flex-wrap gap-3">
-                  <input
-                    type="number"
-                    value={bidAmount}
-                    onChange={(e) => setBidAmount(e.target.value)}
-                    placeholder={`Min ₹${
-                      product.currentBid > 0
-                        ? product.currentBid + product.bidIncrement
-                        : product.startingPrice
-                    }`}
-                    className="input w-44"
-                  />
+          {/* BIDDING */}
+          {product.status === "Active" && isRegistered && (
+            <div className="border-t pt-4 mt-4">
+              <h3 className="font-semibold mb-2">
+                Place Your Bid
+              </h3>
 
-                  <button
-                    onClick={handlePlaceBid}
-                    className="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700 transition"
-                  >
-                    Place Bid
-                  </button>
-                </div>
+              <div className="flex gap-3">
+                <input
+                  type="number"
+                  value={bidAmount}
+                  onChange={(e) => setBidAmount(e.target.value)}
+                  className="border px-3 py-2 rounded w-44"
+                />
+
+                <button
+                  onClick={handlePlaceBid}
+                  className="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700"
+                >
+                  Place Bid
+                </button>
               </div>
-            ) : (
-              <p className="text-red-600 font-medium">
-                You are not registered for this auction.
-              </p>
-            )
-          ) : (
-            product.status === "Ended" && (
-              <p className="text-gray-500 font-medium">
-                Auction has ended.
-              </p>
-            )
+            </div>
+          )}
+
+          {product.status === "Active" && !isRegistered && (
+            <p className="text-red-600 mt-4">
+              You are not registered for this auction.
+            </p>
+          )}
+
+          {product.status === "Ended" && (
+            <p className="text-gray-500 mt-4">
+              Auction has ended.
+            </p>
           )}
         </div>
       </div>
+
+      {/* MODAL */}
+      {showRegisterModal && (
+        <div
+          onClick={() => setShowRegisterModal(false)}
+          className="fixed inset-0 backdrop-blur-md bg-black/20 flex items-center justify-center z-50"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white/90 p-6 rounded-xl shadow-xl w-80 border"
+          >
+            <h2 className="text-lg font-semibold mb-4 text-center">
+              Register for Auction
+            </h2>
+
+            <input
+              type="text"
+              value={bidderName}
+              onChange={(e) => setBidderName(e.target.value)}
+              className="w-full border px-3 py-2 rounded mb-4"
+            />
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowRegisterModal(false)}
+                className="px-4 py-2 bg-gray-300 rounded"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleRegister}
+                className="px-4 py-2 bg-indigo-600 text-white rounded"
+              >
+                Register
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

@@ -101,6 +101,9 @@ const productSchema = new mongoose.Schema(
           type: Boolean,
           default: false, // auction start / winner email sent
         },
+        bidderNumber: Number,
+        bidderName: String,
+        registeredAt: Date,
       },
     ],
 

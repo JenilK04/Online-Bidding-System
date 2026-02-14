@@ -5,21 +5,17 @@ import{
   getProducts,
   getMyProducts,
   closeBid,
-  getSingleProduct
+  getSingleProduct,
+  registerForAuction
 } from "../controller/productscontroller.js";
 
 const router = express.Router();
-
-// Public / Logged-in view
 router.get("/", verifyToken, getProducts);
-
-// Logged-in seller
 router.post("/", verifyToken, addProduct);
 router.get("/my-products", verifyToken, getMyProducts);
-// routes/productRoutes.js
 router.patch("/close/:id", verifyToken, closeBid);
-// routes/productRoutes.js
 router.get("/:id", verifyToken, getSingleProduct);
+router.post("/register/:id", verifyToken, registerForAuction);
 
 
 
