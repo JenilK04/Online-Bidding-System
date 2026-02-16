@@ -1,22 +1,26 @@
 import Product from "../models/products.js";
 
-const calculateStatus = (product) => {
+// 🔥 Auto status calculation + DB update
+const calculateStatus = async (product) => {
   const now = Date.now();
   const startTime = new Date(product.auctionStart).getTime();
 
-  // 🛑 Manual close has highest priority
+  // If manually ended
   if (product.status === "Ended") {
     return "Ended";
   }
 
-  // ⏱ Time-based logic (UTC)
-  if (now >= startTime) {
+  // Upcoming → Active
+  if (now >= startTime && product.status === "Upcoming") {
+    product.status = "Active";
+    await product.save();
     return "Active";
   }
 
-  return "Upcoming";
+  return product.status;
 };
 
+// ➕ Add Product
 export const addProduct = async (req, res) => {
   try {
     const {
@@ -31,7 +35,6 @@ export const addProduct = async (req, res) => {
       maxRegistrations,
     } = req.body;
 
-    // ✅ Validation
     if (
       !title ||
       !description ||
@@ -45,12 +48,6 @@ export const addProduct = async (req, res) => {
         message: "All required fields must be filled",
       });
     }
-
-    // if (images.length > 5) {
-    //   return res.status(400).json({
-    //     message: "Maximum 5 images allowed",
-    //   });
-    // }
 
     if (bidIncrement !== undefined && bidIncrement < 1) {
       return res.status(400).json({
@@ -88,14 +85,20 @@ export const addProduct = async (req, res) => {
   }
 };
 
+// 📦 Get All Products
 export const getProducts = async (req, res) => {
   try {
     const products = await Product.find();
 
-    const updatedProducts = products.map((p) => ({
-      ...p.toObject(),
-      status: calculateStatus(p),
-    }));
+    const updatedProducts = await Promise.all(
+      products.map(async (p) => {
+        const newStatus = await calculateStatus(p);
+        return {
+          ...p.toObject(),
+          status: newStatus,
+        };
+      })
+    );
 
     res.json(updatedProducts);
   } catch (error) {
@@ -103,16 +106,22 @@ export const getProducts = async (req, res) => {
   }
 };
 
+// 📦 Get My Products
 export const getMyProducts = async (req, res) => {
   try {
     const products = await Product.find({
       sellerId: req.user.id,
     });
 
-    const updatedProducts = products.map((p) => ({
-      ...p.toObject(),
-      status: calculateStatus(p),
-    }));
+    const updatedProducts = await Promise.all(
+      products.map(async (p) => {
+        const newStatus = await calculateStatus(p);
+        return {
+          ...p.toObject(),
+          status: newStatus,
+        };
+      })
+    );
 
     res.json(updatedProducts);
   } catch (error) {
@@ -120,6 +129,7 @@ export const getMyProducts = async (req, res) => {
   }
 };
 
+// 📦 Get Single Product
 export const getSingleProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -130,9 +140,11 @@ export const getSingleProduct = async (req, res) => {
       });
     }
 
+    const newStatus = await calculateStatus(product);
+
     res.json({
       ...product.toObject(),
-      status: calculateStatus(product),
+      status: newStatus,
     });
   } catch (error) {
     res.status(500).json({
@@ -141,6 +153,7 @@ export const getSingleProduct = async (req, res) => {
   }
 };
 
+// 🔒 Close Bid Manually
 export const closeBid = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -151,7 +164,6 @@ export const closeBid = async (req, res) => {
       });
     }
 
-    // 🔐 Only seller can close
     if (product.sellerId.toString() !== req.user.id) {
       return res.status(403).json({
         message: "Not authorized",
@@ -175,10 +187,11 @@ export const closeBid = async (req, res) => {
   }
 };
 
+// 📝 Register For Auction
 export const registerForAuction = async (req, res) => {
   try {
     const { id } = req.params;
-    const { bidderName } = req.body; // user optional name
+    const { bidderName } = req.body;
     const userId = req.user.id;
 
     const product = await Product.findById(id);
@@ -213,7 +226,6 @@ export const registerForAuction = async (req, res) => {
         message: "Slots full",
       });
 
-    // ✅ Auto assign bidder number
     const bidderNumber =
       product.registeredUsers.length + 1;
 
@@ -232,12 +244,11 @@ export const registerForAuction = async (req, res) => {
     });
 
   } catch (error) {
-  console.error("🔥 REGISTER ERROR:", error);
-  console.error("🔥 STACK:", error.stack);
+    console.error("REGISTER ERROR:", error);
+    console.error("STACK:", error.stack);
 
-  return res.status(500).json({
-    message: error.message,
-  });
-}
+    return res.status(500).json({
+      message: error.message,
+    });
+  }
 };
-

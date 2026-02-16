@@ -2,8 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import Navbar from "./navbar";
 import API from "../services/api";
-import useAutoRefresh from "../services/autoRefrash";
-
+import socket from "../services/socket";
 // 🕒 Local time formatter
 const formatLocalTime = (utcDate) => {
   return new Date(utcDate).toLocaleString(undefined, {
@@ -35,6 +34,7 @@ const ProductDetails = () => {
 
   const [product, setProduct] = useState(null);
   const [bidAmount, setBidAmount] = useState("");
+  const [isNewBid, setIsNewBid] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
@@ -42,11 +42,8 @@ const ProductDetails = () => {
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [bidderName, setBidderName] = useState("");
 
-  const userId = getUserIdFromToken();
 
-  /* ======================
-     FETCH PRODUCT
-  ======================= */
+  const userId = getUserIdFromToken();
 
   const fetchProduct = async () => {
     try {
@@ -64,7 +61,32 @@ const ProductDetails = () => {
     fetchProduct();
   }, [id]);
 
-  useAutoRefresh(fetchProduct, 10000);
+  // 🔥 LIVE SOCKET BIDDING
+  useEffect(() => {
+    if (!product?._id) return;
+
+    socket.emit("joinAuction", product._id);
+
+    socket.on("bidUpdated", (data) => {
+      if (data.productId === product._id) {
+        setProduct((prev) => ({
+          ...prev,
+          currentBid: data.currentBid,
+          bidsCount: data.bidsCount,
+          highestBidderId: data.bidderId,
+        }));
+
+        // Highlight animation
+        setIsNewBid(true);
+        setTimeout(() => setIsNewBid(false), 1500);
+      }
+    });
+
+    return () => {
+      socket.off("bidUpdated");
+    };
+  }, [product?._id]);
+
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -73,9 +95,6 @@ const ProductDetails = () => {
     return () => clearInterval(timer);
   }, []);
 
-  /* ======================
-     UI STATES
-  ======================= */
 
   if (loading) {
     return (
@@ -99,10 +118,6 @@ const ProductDetails = () => {
     );
   }
 
-  /* ======================
-     LOGIC
-  ======================= */
-
   const registeredCount =
     product.registeredUsers?.length || 0;
 
@@ -113,7 +128,23 @@ const ProductDetails = () => {
     (u) => u.userId === userId
   );
 
+  const myRegistration = product.registeredUsers?.find(
+    (u) => u.userId === userId
+  );
+
+  const myBidderName = myRegistration?.bidderName || "";
+
   const isOwner = product.sellerId === userId;
+
+  const basePrice =
+  product.currentBid > 0
+    ? product.currentBid
+    : product.startingPrice;
+
+  const minimumBid = basePrice + product.bidIncrement;
+
+  const isHighestBidder = product.highestBidderId === userId;
+
 
   let liveSince = "";
   if (product.status === "Active") {
@@ -127,9 +158,6 @@ const ProductDetails = () => {
     liveSince = `${h}h ${m}m ${s}s`;
   }
 
-  /* ======================
-     FUNCTIONS
-  ======================= */
 
   const openRegisterModal = () => {
     const nextNumber = registeredCount + 1;
@@ -156,23 +184,28 @@ const ProductDetails = () => {
   };
 
   const handlePlaceBid = async () => {
-    if (!bidAmount) return alert("Enter bid amount");
+  if (!bidAmount) return alert("Enter bid amount");
 
-    try {
-      await API.post(`/bids/${id}`, {
-        amount: Number(bidAmount),
-      });
+  if (Number(bidAmount) < minimumBid) {
+    return alert(`Minimum bid must be ₹${minimumBid}`);
+  }
 
-      setBidAmount("");
-      fetchProduct();
-    } catch (err) {
-      alert(err.response?.data?.message || "Bid failed");
-    }
-  };
+  if (isHighestBidder) {
+    return alert("You already have highest bid");
+  }
 
-  /* ======================
-     UI
-  ======================= */
+  try {
+    await API.post(`/products/bids/${id}`, {
+      amount: Number(bidAmount),
+    });
+
+    setBidAmount("");
+    // ❌ Do NOT call fetchProduct()
+  } catch (err) {
+    alert(err.response?.data?.message || "Bid failed");
+  }
+};
+
 
   return (
     <>
@@ -216,7 +249,16 @@ const ProductDetails = () => {
             )}
 
             <p><strong>Starting Price:</strong> ₹{product.startingPrice}</p>
-            <p><strong>Current Bid:</strong> {product.currentBid > 0 ? `₹${product.currentBid}` : "No bids yet"}</p>
+            <p>
+              <strong>Current Bid:</strong>{" "}
+              <span
+                className={`font-bold ${
+                  isNewBid ? "text-green-600 animate-pulse" : "text-green-600"
+                }`}
+              >
+                ₹{basePrice}
+              </span>
+            </p>
             <p><strong>Bid Increment:</strong> ₹{product.bidIncrement}</p>
             <p><strong>Total Bids:</strong> {product.bidsCount}</p>
 
@@ -262,34 +304,64 @@ const ProductDetails = () => {
           {product.status === "Upcoming" &&
             isRegistered && (
               <p className="mt-4 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm">
-                ✅ You are registered. Auction hasn’t started yet.
+                ✅ You are registered as {myBidderName}. Auction hasn’t started yet.
               </p>
           )}
 
           {/* BIDDING */}
           {product.status === "Active" && isRegistered && (
             <div className="border-t pt-4 mt-4">
-              <h3 className="font-semibold mb-2">
-                Place Your Bid
+              <h3 className="font-semibold mb-3 text-blue-700">
+                🔥 Live Bidding
               </h3>
+
+              <div className="mb-3 text-sm bg-gray-50 p-3 rounded border">
+                <p>Starting Price: ₹{product.startingPrice}</p>
+                <p>Minimum Increment: ₹{product.bidIncrement}</p>
+                <p>
+                  Minimum Allowed Bid:{" "}
+                  <span className="font-semibold text-blue-600">
+                    ₹{minimumBid}
+                  </span>
+                </p>
+              </div>
+
+              {isHighestBidder && (
+                <div className="mb-3 p-2 bg-green-100 text-green-700 rounded text-sm">
+                  🏆 You are currently the highest bidder
+                </div>
+              )}
 
               <div className="flex gap-3">
                 <input
                   type="number"
                   value={bidAmount}
                   onChange={(e) => setBidAmount(e.target.value)}
+                  placeholder={`Enter ₹${minimumBid} or higher`}
                   className="border px-3 py-2 rounded w-44"
                 />
 
                 <button
                   onClick={handlePlaceBid}
-                  className="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700"
+                  disabled={
+                    !bidAmount ||
+                    Number(bidAmount) < minimumBid ||
+                    isHighestBidder
+                  }
+                  className={`px-5 py-2 rounded text-white ${
+                    !bidAmount ||
+                    Number(bidAmount) < minimumBid ||
+                    isHighestBidder
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-blue-600 hover:bg-blue-700"
+                  }`}
                 >
-                  Place Bid
+                  {isHighestBidder ? "Highest Bid" : "Place Bid"}
                 </button>
               </div>
             </div>
           )}
+
 
           {product.status === "Active" && !isRegistered && (
             <p className="text-red-600 mt-4">
