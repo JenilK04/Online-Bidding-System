@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useParams } from "react-router-dom";
-import Navbar from "./navbar";
+import Navbar from "./Navbar";
 import API from "../services/api";
 import useAutoRefresh from "../services/autoRefrash";
 
@@ -40,7 +40,7 @@ const MyProductDetails = () => {
   // 🔹 Fetch bids
   const fetchBids = async () => {
     try {
-      const res = await API.get(`/bids/product/${id}`);
+      const res = await API.get(`/products/bids/${id}`);
       setBids(res.data);
     } catch {
       // silent fail (don’t block UI)

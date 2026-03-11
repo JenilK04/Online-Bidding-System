@@ -5,6 +5,7 @@ import Register from "./components/register";
 import Login from "./components/login";
 import MyProducts from "./components/myProducts";
 import ViewBid from "./components/viewBid";
+import MyProfile from "./components/myProfile";
 
 import ProtectedRoute from "./routes/protectedroutes";  
 import ProductDetails from "./components/productDetails";
@@ -53,6 +54,14 @@ function App() {
           }
         />
 
+        <Route
+          path="/my-profile"
+          element={
+            // <ProtectedRoute>
+              <MyProfile />
+            // </ProtectedRoute>
+          }
+        />
       </Routes>
     </BrowserRouter>
   );

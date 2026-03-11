@@ -86,3 +86,31 @@ export const placeBid = async (req, res) => {
     return res.status(500).json({ message: "Server Error" });
   }
 };
+
+export const getBidsByProduct = async (req, res) => {
+  try {
+    const productId  = req.params.id;
+
+    const product = await Product.findById(productId);
+
+    if (!product) {
+      return res.status(404).json({
+        message: "Product not found",
+      });
+    }
+
+    // Only seller can view bid history
+    if (product.sellerId.toString() !== req.user.id) {
+      return res.status(403).json({
+        message: "Not authorized to view bids",
+      });
+    }
+
+    res.json(product.bids || []);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Failed to fetch bids",
+    });
+  }
+};

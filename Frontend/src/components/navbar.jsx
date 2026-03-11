@@ -36,6 +36,12 @@ const Navbar = () => {
           </button>
         </Link>
 
+        <Link to="/my-profile">
+          <button className="border border-white px-4 py-2 rounded hover:bg-blue-700 text-sm">
+            My Profile
+          </button>
+        </Link>
+
         <button
           onClick={handleLogout}
           className="bg-red-500 px-4 py-2 rounded hover:bg-red-600 text-sm"

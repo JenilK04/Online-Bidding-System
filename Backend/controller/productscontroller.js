@@ -153,7 +153,7 @@ export const getSingleProduct = async (req, res) => {
   }
 };
 
-// 🔒 Close Bid Manually
+// Close Bid Manually + Set Winner
 export const closeBid = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -164,26 +164,42 @@ export const closeBid = async (req, res) => {
       });
     }
 
+    // Only seller can close
     if (product.sellerId.toString() !== req.user.id) {
       return res.status(403).json({
         message: "Not authorized",
       });
     }
 
+    // If already closed
+    if (product.status === "Ended") {
+      return res.status(400).json({
+        message: "Auction already closed",
+      });
+    }
+
+    // 🔥 Determine winner
+    if (product.highestBidderId) {
+      product.winnerId = product.highestBidderId;
+    }
+
     product.status = "Ended";
+
     await product.save();
 
     res.json({
       message: "Bidding closed successfully",
-      product: {
-        ...product.toObject(),
-        status: "Ended",
-      },
+      winnerId: product.winnerId,
+      product,
     });
+
   } catch (error) {
+
     res.status(500).json({
       message: "Failed to close bid",
+      error: error.message
     });
+
   }
 };
 

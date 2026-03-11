@@ -9,7 +9,7 @@ import{
   registerForAuction
 } from "../controller/productscontroller.js";
 
-import { placeBid } from "../controller/bidController.js";
+import { placeBid, getBidsByProduct } from "../controller/bidController.js";
 
 const router = express.Router();
 router.get("/", verifyToken, getProducts);
@@ -20,7 +20,6 @@ router.get("/:id", verifyToken, getSingleProduct);
 router.post("/register/:id", verifyToken, registerForAuction);
 
 router.post("/bids/:id", verifyToken, placeBid);
-
-
+router.get("/bids/:id", verifyToken, getBidsByProduct);
 
 export default router;

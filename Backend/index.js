@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import authRoutes from './routes/authroutes.js';
 import productRoutes from './routes/productsroutes.js';
+import profileRoutes from './routes/profileRoute.js';
 import { Server } from 'socket.io';
 import http from 'http';
 
@@ -38,6 +39,7 @@ app.use(express.urlencoded({ extended: true, limit: "200mb" }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/products',productRoutes );
+app.use("/api/profile", profileRoutes);
 
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('MongoDB connected'))
