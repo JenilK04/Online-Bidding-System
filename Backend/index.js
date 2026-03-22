@@ -22,9 +22,15 @@ export const io = new Server(server, {
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  // Join auction room
-  socket.on("joinAuction", (productId) => {
+  // ✅ FIXED name
+  socket.on("joinProduct", (productId) => {
     socket.join(productId);
+    console.log("Joined room:", productId);
+  });
+
+  socket.on("leaveProduct", (productId) => {
+    socket.leave(productId);
+    console.log("Left room:", productId);
   });
 
   socket.on("disconnect", () => {
