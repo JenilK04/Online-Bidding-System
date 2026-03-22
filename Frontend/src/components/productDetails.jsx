@@ -57,35 +57,30 @@ const ProductDetails = () => {
     }
   };
 
-  useEffect(() => {
-    fetchProduct();
-  }, [id]);
-
+  fetchProduct();
   // 🔥 LIVE SOCKET BIDDING
   useEffect(() => {
-    if (!product?._id) return;
+  if (!product?._id) return;
 
-    socket.emit("joinAuction", product._id);
+  // 🔥 Join correct room
+  socket.emit("joinProduct", product._id);
 
-    socket.on("bidUpdated", (data) => {
-      if (data.productId === product._id) {
-        setProduct((prev) => ({
-          ...prev,
-          currentBid: data.currentBid,
-          bidsCount: data.bidsCount,
-          highestBidderId: data.bidderId,
-        }));
+  // 🔥 Listen FULL product update
+  socket.on("productUpdated", (updatedProduct) => {
+    if (updatedProduct._id === product._id) {
+      setProduct(updatedProduct);
 
-        // Highlight animation
-        setIsNewBid(true);
-        setTimeout(() => setIsNewBid(false), 1500);
-      }
-    });
+      // 🎯 Detect bid change (for animation)
+      setIsNewBid(true);
+      setTimeout(() => setIsNewBid(false), 1500);
+    }
+  });
 
-    return () => {
-      socket.off("bidUpdated");
-    };
-  }, [product?._id]);
+  return () => {
+    socket.emit("leaveProduct", product._id);
+    socket.off("productUpdated");
+  };
+  }, [id]);
 
 
   useEffect(() => {

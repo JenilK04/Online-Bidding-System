@@ -1,4 +1,11 @@
 import Product from "../models/products.js";
+import { io } from "../index.js";
+
+// 🔥 Helper to emit updated product everywhere
+const emitProductUpdate = async (productId) => {
+  const updatedProduct = await Product.findById(productId);
+  io.to(productId.toString()).emit("productUpdated", updatedProduct);
+};
 
 // 🔥 Auto status calculation + DB update
 const calculateStatus = async (product) => {
@@ -10,10 +17,14 @@ const calculateStatus = async (product) => {
     return "Ended";
   }
 
-  // Upcoming → Active
+  // 🔥 Upcoming → Active
   if (now >= startTime && product.status === "Upcoming") {
     product.status = "Active";
     await product.save();
+
+    // ✅ Emit when status changes
+    await emitProductUpdate(product._id);
+
     return "Active";
   }
 
@@ -72,6 +83,9 @@ export const addProduct = async (req, res) => {
     });
 
     await product.save();
+
+    // 🔥 Emit new product (homepage/listing update)
+    io.emit("productCreated", product);
 
     res.status(201).json({
       message: "Product added successfully",
@@ -153,7 +167,7 @@ export const getSingleProduct = async (req, res) => {
   }
 };
 
-// Close Bid Manually + Set Winner
+// 🔒 Close Bid Manually + Set Winner
 export const closeBid = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -187,6 +201,9 @@ export const closeBid = async (req, res) => {
 
     await product.save();
 
+    // 🔥 Emit update to all clients
+    await emitProductUpdate(product._id);
+
     res.json({
       message: "Bidding closed successfully",
       winnerId: product.winnerId,
@@ -194,12 +211,10 @@ export const closeBid = async (req, res) => {
     });
 
   } catch (error) {
-
     res.status(500).json({
       message: "Failed to close bid",
-      error: error.message
+      error: error.message,
     });
-
   }
 };
 
@@ -242,8 +257,7 @@ export const registerForAuction = async (req, res) => {
         message: "Slots full",
       });
 
-    const bidderNumber =
-      product.registeredUsers.length + 1;
+    const bidderNumber = product.registeredUsers.length + 1;
 
     product.registeredUsers.push({
       userId,
@@ -254,6 +268,9 @@ export const registerForAuction = async (req, res) => {
 
     await product.save();
 
+    // 🔥 Emit update (registration changed)
+    await emitProductUpdate(product._id);
+
     res.status(200).json({
       message: "Registered successfully",
       bidderNumber,
@@ -261,7 +278,6 @@ export const registerForAuction = async (req, res) => {
 
   } catch (error) {
     console.error("REGISTER ERROR:", error);
-    console.error("STACK:", error.stack);
 
     return res.status(500).json({
       message: error.message,

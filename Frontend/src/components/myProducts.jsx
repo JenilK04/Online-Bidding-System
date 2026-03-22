@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "./Navbar";
 import AddProductModal from "./addProduct";
 import API from "../services/api";
-import useAutoRefresh from "../services/autoRefrash";
+import socket from "../services/socket";
 
 const MyProducts = () => {
   const [products, setProducts] = useState([]);
@@ -28,8 +28,28 @@ const MyProducts = () => {
     }
   };
 
-  useAutoRefresh(fetchMyProducts, 10000);
+    fetchMyProducts();  
 
+  useEffect(() => {
+  // 🔥 Listen for product updates
+  socket.on("productUpdated", (updatedProduct) => {
+    setProducts((prev) =>
+      prev.map((p) =>
+        p._id === updatedProduct._id ? updatedProduct : p
+      )
+    );
+  });
+
+  // 🔥 Listen for new product
+  socket.on("productCreated", (newProduct) => {
+    setProducts((prev) => [newProduct, ...prev]);
+  });
+
+  return () => {
+    socket.off("productUpdated");
+    socket.off("productCreated");
+  };
+}, []);
   // 🔴 Open Modal
   const openCloseModal = (id) => {
     setSelectedProductId(id);

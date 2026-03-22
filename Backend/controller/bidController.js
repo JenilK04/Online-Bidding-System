@@ -55,28 +55,41 @@ export const placeBid = async (req, res) => {
       });
     }
 
-    // 🔥 Update product
+    // 🔥 Update product fields
     product.currentBid = amount;
     product.highestBidderId = userId;
     product.bidsCount += 1;
+
+    // ✅ Store bid history (important for seller view)
+    // product.bids.push({
+    //   userId,
+    //   amount,
+    //   time: new Date(),
+    // });
 
     await product.save({ session });
 
     await session.commitTransaction();
     session.endSession();
 
-    // ⚡ Emit real-time update
+    // ✅ Fetch latest updated product (VERY IMPORTANT)
+    const updatedProduct = await Product.findById(productId);
+
+    // 🔥 Emit FULL product update (main fix)
+    io.to(productId).emit("productUpdated", updatedProduct);
+
+    // ⚡ Optional: lightweight update (for fast UI)
     io.to(productId).emit("bidUpdated", {
       productId,
       currentBid: amount,
-      bidsCount: product.bidsCount,
-      bidderId: userId,
+      bidsCount: updatedProduct.bidsCount,
+      highestBidderId: userId,
     });
 
     return res.status(200).json({
       success: true,
       message: "Bid placed successfully",
-      currentBid: amount,
+      product: updatedProduct, // send updated product in API too
     });
 
   } catch (error) {
@@ -87,30 +100,30 @@ export const placeBid = async (req, res) => {
   }
 };
 
-export const getBidsByProduct = async (req, res) => {
-  try {
-    const productId  = req.params.id;
+// export const getBidsByProduct = async (req, res) => {
+//   try {
+//     const productId  = req.params.id;
 
-    const product = await Product.findById(productId);
+//     const product = await Product.findById(productId);
 
-    if (!product) {
-      return res.status(404).json({
-        message: "Product not found",
-      });
-    }
+//     if (!product) {
+//       return res.status(404).json({
+//         message: "Product not found",
+//       });
+//     }
 
-    // Only seller can view bid history
-    if (product.sellerId.toString() !== req.user.id) {
-      return res.status(403).json({
-        message: "Not authorized to view bids",
-      });
-    }
+//     // Only seller can view bid history
+//     if (product.sellerId.toString() !== req.user.id) {
+//       return res.status(403).json({
+//         message: "Not authorized to view bids",
+//       });
+//     }
 
-    res.json(product.bids || []);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      message: "Failed to fetch bids",
-    });
-  }
-};
+//     res.json(product.bids || []);
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({
+//       message: "Failed to fetch bids",
+//     });
+//   }
+// };

@@ -1,10 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import Navbar from "./navbar";
+import Navbar from "./Navbar";
 import API from "../services/api";
-import useAutoRefresh from "../services/autoRefrash";
+import socket from "../services/socket";
 
-// ✅ Timezone-safe formatter (UTC → user local, AM/PM)
 const formatDateTime = (utcDate) => {
   return new Date(utcDate).toLocaleString(undefined, {
     day: "2-digit",
@@ -35,9 +34,29 @@ const Products = () => {
     }
   };
 
-  // 🔁 Auto refresh every 10 sec
-  useAutoRefresh(fetchProducts, 10000);
+    fetchProducts();
 
+
+  useEffect(() => {
+  // 🔥 When new product is added
+  socket.on("productCreated", (newProduct) => {
+    setProducts((prev) => [newProduct, ...prev]);
+  });
+
+  // 🔥 When product updates (bid, status, registration, etc.)
+  socket.on("productUpdated", (updatedProduct) => {
+    setProducts((prev) =>
+      prev.map((p) =>
+        p._id === updatedProduct._id ? updatedProduct : p
+      )
+    );
+  });
+
+  return () => {
+    socket.off("productCreated");
+    socket.off("productUpdated");
+  };
+}, []);
   return (
     <div className="bg min-h-screen">
       <Navbar />
