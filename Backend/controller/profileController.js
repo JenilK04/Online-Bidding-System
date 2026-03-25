@@ -19,27 +19,14 @@ export const getProfile = async (req, res) => {
       });
     }
 
-    /* ---------------------------
-       Products created by seller
-    ----------------------------*/
-
     const myProducts = await Product.find({
       sellerId: userId
     }).sort({ createdAt: -1 });
 
 
-    /* ---------------------------
-       Products won by the user
-    ----------------------------*/
-
     const wonProducts = await Product.find({
       winnerId: userId
     }).sort({ createdAt: -1 });
-
-
-    /* ---------------------------
-       Auctions user registered in
-    ----------------------------*/
 
     const registeredProducts = await Product.find({
       "registeredUsers.userId": userId

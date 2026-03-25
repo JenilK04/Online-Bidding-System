@@ -57,30 +57,32 @@ const ProductDetails = () => {
     }
   };
 
+useEffect(() => {
   fetchProduct();
-  // 🔥 LIVE SOCKET BIDDING
-  useEffect(() => {
+}, [product?._id]); 
+
+useEffect(() => {
   if (!product?._id) return;
 
-  // 🔥 Join correct room
   socket.emit("joinProduct", product._id);
 
-  // 🔥 Listen FULL product update
-  socket.on("productUpdated", (updatedProduct) => {
+  const handleUpdate = (updatedProduct) => {
+    console.log("🔥 LIVE:", updatedProduct);
+
     if (updatedProduct._id === product._id) {
       setProduct(updatedProduct);
 
-      // 🎯 Detect bid change (for animation)
       setIsNewBid(true);
       setTimeout(() => setIsNewBid(false), 1500);
     }
-  });
+  };
+
+  socket.on("productUpdated", handleUpdate);
 
   return () => {
-    socket.emit("leaveProduct", product._id);
-    socket.off("productUpdated");
+    socket.off("productUpdated", handleUpdate);
   };
-  }, [id]);
+}, [product?._id]);
 
 
   useEffect(() => {

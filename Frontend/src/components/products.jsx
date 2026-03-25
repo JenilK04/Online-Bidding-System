@@ -33,10 +33,10 @@ const Products = () => {
       setLoading(false);
     }
   };
-
-    fetchProducts();
-
-
+  useEffect(() => {
+  fetchProducts();
+  })  
+  
   useEffect(() => {
   // 🔥 When new product is added
   socket.on("productCreated", (newProduct) => {

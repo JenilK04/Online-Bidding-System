@@ -21,9 +21,7 @@ const productSchema = new mongoose.Schema(
       },
     ],
 
-    category: {
-      type: String,
-    },
+    category: String,
 
     condition: {
       type: String,
@@ -45,7 +43,7 @@ const productSchema = new mongoose.Schema(
 
     bidIncrement: {
       type: Number,
-      default: 10, // ₹10 minimum increment
+      default: 10,
       min: 1,
     },
 
@@ -54,13 +52,13 @@ const productSchema = new mongoose.Schema(
       default: 0,
     },
 
-    // 🔹 AUCTION TIME (DATE + TIME)
+    // 🔹 AUCTION TIME
     auctionStart: {
       type: Date,
       required: true,
     },
 
-    // 🔹 AUCTION STATUS
+    // 🔹 STATUS
     status: {
       type: String,
       enum: ["Upcoming", "Active", "Ended"],
@@ -84,7 +82,7 @@ const productSchema = new mongoose.Schema(
       ref: "User",
     },
 
-    // 🔹 BIDDER REGISTRATION (BEFORE BIDDING)
+    // 🔹 REGISTRATION
     maxRegistrations: {
       type: Number,
       required: true,
@@ -99,7 +97,7 @@ const productSchema = new mongoose.Schema(
         },
         notified: {
           type: Boolean,
-          default: false, // auction start / winner email sent
+          default: false,
         },
         bidderNumber: Number,
         bidderName: String,
@@ -112,27 +110,46 @@ const productSchema = new mongoose.Schema(
       default: false,
     },
 
-    // 🔹 POST-AUCTION FLOW
+    // 📍 Shipping Address (buyer input)
+    shippingAddress: {
+      type: String,
+      default: "",
+    },
+
+    // 📞 Contact Number (buyer input)
+    contactNumber: {
+      type: String,
+      default: "",
+    },
+
+    // 💳 Payment
     paymentStatus: {
       type: String,
       enum: ["Pending", "Paid"],
       default: "Pending",
     },
 
+    // 🚚 Delivery
     deliveryStatus: {
       type: String,
       enum: ["Pending", "Shipped", "Delivered"],
       default: "Pending",
     },
 
-    // 🔹 VISIBILITY CONTROL
+    // 🔥 Derived helper (optional but powerful)
+    orderReady: {
+      type: Boolean,
+      default: false,
+    },
+
+    // 🔹 VISIBILITY
     isArchived: {
       type: Boolean,
       default: false,
     },
   },
   {
-    timestamps: true, // createdAt & updatedAt
+    timestamps: true,
   }
 );
 

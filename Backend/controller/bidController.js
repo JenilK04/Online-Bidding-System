@@ -3,30 +3,30 @@ import Product from "../models/products.js";
 import { io } from "../index.js";
 
 export const placeBid = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
+    if (!req.body || req.body.amount === undefined) {
+      return res.status(400).json({
+        message: "Bid amount is required",
+      });
+    }
+
     const { amount } = req.body;
     const productId = req.params.id;
     const userId = req.user.id;
 
-    const product = await Product.findById(productId).session(session);
+    const product = await Product.findById(productId);
 
     if (!product) {
-      await session.abortTransaction();
       return res.status(404).json({ message: "Product not found" });
     }
 
     // 🚫 Auction must be active
     if (product.status !== "Active") {
-      await session.abortTransaction();
       return res.status(400).json({ message: "Auction not active" });
     }
 
     // 🚫 Seller cannot bid
     if (product.sellerId.toString() === userId) {
-      await session.abortTransaction();
       return res.status(400).json({ message: "Seller cannot bid" });
     }
 
@@ -36,11 +36,10 @@ export const placeBid = async (req, res) => {
     );
 
     if (!isRegistered) {
-      await session.abortTransaction();
       return res.status(400).json({ message: "Not registered for auction" });
     }
 
-    // 💰 Calculate minimum bid
+    // 💰 Minimum bid logic
     const basePrice =
       product.currentBid > 0
         ? product.currentBid
@@ -49,57 +48,40 @@ export const placeBid = async (req, res) => {
     const minBid = basePrice + product.bidIncrement;
 
     if (amount < minBid) {
-      await session.abortTransaction();
       return res.status(400).json({
         message: `Minimum bid must be ₹${minBid}`,
       });
     }
 
-    // 🔥 Update product fields
+    // 🔥 Update
     product.currentBid = amount;
     product.highestBidderId = userId;
     product.bidsCount += 1;
 
-    // ✅ Store bid history (important for seller view)
-    // product.bids.push({
-    //   userId,
-    //   amount,
-    //   time: new Date(),
-    // });
+    await product.save();
 
-    await product.save({ session });
+    // 🔥 Emit full update
+    io.to(productId).emit("productUpdated", product);
 
-    await session.commitTransaction();
-    session.endSession();
-
-    // ✅ Fetch latest updated product (VERY IMPORTANT)
-    const updatedProduct = await Product.findById(productId);
-
-    // 🔥 Emit FULL product update (main fix)
-    io.to(productId).emit("productUpdated", updatedProduct);
-
-    // ⚡ Optional: lightweight update (for fast UI)
+    // ⚡ Optional lightweight update
     io.to(productId).emit("bidUpdated", {
       productId,
       currentBid: amount,
-      bidsCount: updatedProduct.bidsCount,
+      bidsCount: product.bidsCount,
       highestBidderId: userId,
     });
 
     return res.status(200).json({
       success: true,
       message: "Bid placed successfully",
-      product: updatedProduct, // send updated product in API too
+      product,
     });
 
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
     console.error(error);
     return res.status(500).json({ message: "Server Error" });
   }
 };
-
 // export const getBidsByProduct = async (req, res) => {
 //   try {
 //     const productId  = req.params.id;
