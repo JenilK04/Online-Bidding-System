@@ -8,7 +8,7 @@ const router = express.Router();
 /* REGISTER */
 export const register = async (req, res) => {
   try {
-    const { firstName, lastName, email, password, confirmPassword } = req.body;
+    const { firstName, lastName, email, password, confirmPassword, phone } = req.body;
 
     // 🔴 EMPTY FIELD VALIDATION
     if (!firstName || !lastName || !email || !password || !confirmPassword) {
@@ -41,6 +41,7 @@ export const register = async (req, res) => {
       firstName,
       lastName,
       email,
+      phone,
       password: hashedPassword,
     });
 
@@ -91,6 +92,7 @@ export const login = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
+        phone: user.phone,
       },
     });
 

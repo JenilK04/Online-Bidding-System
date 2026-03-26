@@ -87,7 +87,7 @@ const Profile = () => {
             <p className="text-slate-500 font-medium">{user.email}</p>
             <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-3">
                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 uppercase tracking-widest">
-                 <FiPhone className="text-indigo-500" /> {user.mobile || "No Contact"}
+                 <FiPhone className="text-indigo-500" /> {user.phone || "No Contact"}
                </div>
                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 uppercase tracking-widest">
                  <FiMapPin className="text-indigo-500" /> {user.address || "No Address Saved"}

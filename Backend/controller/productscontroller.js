@@ -1,286 +1,201 @@
 import Product from "../models/products.js";
 import { io } from "../index.js";
 
-// 🔥 Helper to emit updated product everywhere
+// 🔥 Helper: Emit updated product with real-time status
 const emitProductUpdate = async (productId) => {
   const updatedProduct = await Product.findById(productId);
-  io.to(productId.toString()).emit("productUpdated", updatedProduct);
+  if (updatedProduct) {
+    io.to(productId.toString()).emit("productUpdated", updatedProduct);
+  }
 };
 
-// 🔥 Auto status calculation + DB update
+// 🔥 Enterprise Status Engine (Handles Soft-Close & Expiration)
 const calculateStatus = async (product) => {
-  const now = Date.now();
-  const startTime = new Date(product.auctionStart).getTime();
+  const now = new Date();
+  const startTime = new Date(product.startTime);
+  const endTime = new Date(product.endTime);
 
-  // If manually ended
-  if (product.status === "Ended") {
-    return "Ended";
+  // If already finalized, don't re-calculate
+  if (["Sold", "Unsold", "Cancelled"].includes(product.status)) {
+    return product.status;
   }
 
-  // 🔥 Upcoming → Active
-  if (now >= startTime && product.status === "Upcoming") {
-    product.status = "Active";
+  let newStatus = product.status;
+
+  // Scheduled -> Active
+  if (now >= startTime && now < endTime && product.status === "Scheduled") {
+    newStatus = "Active";
+  } 
+  
+  // 🔥 ACTIVE/SCHEDULED -> FINALIZED (The Auto-Win Logic)
+  else if (now >= endTime && (product.status === "Active" || product.status === "Scheduled")) {
+    
+    // Check if there was at least one bid
+    if (product.bidsCount > 0 && product.highestBidderId) {
+      product.winnerId = product.highestBidderId;
+      product.paymentStatus = "Pending";
+      newStatus = "Sold";
+    } else {
+      newStatus = "Unsold";
+    }
+  }
+
+  if (newStatus !== product.status) {
+    product.status = newStatus;
     await product.save();
-
-    // ✅ Emit when status changes
     await emitProductUpdate(product._id);
-
-    return "Active";
   }
 
-  return product.status;
+  return newStatus;
 };
 
-// ➕ Add Product
+// ➕ 1. ADD PRODUCT (Handles nested Return Policy & Logistics)
 export const addProduct = async (req, res) => {
   try {
     const {
-      title,
-      description,
-      images,
-      category,
-      condition,
-      startingPrice,
-      bidIncrement,
-      auctionStart,
-      maxRegistrations,
+      title, subtitle, sku, category, brand, modelNumber,
+      condition, images, description, startingPrice,
+      bidIncrement, maxRegistrations, startTime, endTime,
+      antiSnipeWindow, extensionDuration, returnPolicy,
+      shippingWeight, dimensions
     } = req.body;
 
-    if (
-      !title ||
-      !description ||
-      !images ||
-      images.length === 0 ||
-      !startingPrice ||
-      !auctionStart ||
-      !maxRegistrations
-    ) {
-      return res.status(400).json({
-        message: "All required fields must be filled",
-      });
-    }
-
-    if (bidIncrement !== undefined && bidIncrement < 1) {
-      return res.status(400).json({
-        message: "Bid increment must be at least 1",
-      });
-    }
-
     const product = new Product({
-      title,
-      description,
-      images,
-      category,
-      condition,
+      title, subtitle, sku, category, brand, modelNumber,
+      condition, images, description,
+      sellerId: req.user.id,
       startingPrice,
       bidIncrement: bidIncrement || 10,
-      auctionStart,
-      maxRegistrations,
-      sellerId: req.user.id,
-      status: "Upcoming",
-      currentBid: 0,
-      bidsCount: 0,
+      maxRegistrations: maxRegistrations || 100,
+      startTime,
+      endTime,
+      antiSnipeWindow: antiSnipeWindow || 60,
+      extensionDuration: extensionDuration || 120,
+      returnPolicy, // Matches nested schema object
+      shippingWeight,
+      dimensions,   // Matches nested schema object
+      status: "Draft", // Pro apps start as Draft
     });
 
     await product.save();
-
-    // 🔥 Emit new product (homepage/listing update)
     io.emit("productCreated", product);
 
-    res.status(201).json({
-      message: "Product added successfully",
-      product,
-    });
+    res.status(201).json({ message: "Listing created successfully", product });
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to add product",
-      error: error.message,
-    });
+    res.status(500).json({ message: "Failed to add product", error: error.message });
   }
 };
 
-// 📦 Get All Products
+// 📦 2. GET ALL PRODUCTS (Filtered for Gallery)
 export const getProducts = async (req, res) => {
   try {
-    const products = await Product.find();
+    // Only show live/scheduled auctions on public gallery
+    const products = await Product.find({ 
+      status: { $in: ["Scheduled", "Active"] },
+      isArchived: { $ne: true } 
+    }).sort({ startTime: 1 });
 
     const updatedProducts = await Promise.all(
       products.map(async (p) => {
-        const newStatus = await calculateStatus(p);
-        return {
-          ...p.toObject(),
-          status: newStatus,
-        };
+        const status = await calculateStatus(p);
+        return { ...p.toObject(), status };
       })
     );
 
     res.json(updatedProducts);
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch products" });
+    res.status(500).json({ message: "Failed to fetch gallery" });
   }
 };
 
-// 📦 Get My Products
-export const getMyProducts = async (req, res) => {
-  try {
-    const products = await Product.find({
-      sellerId: req.user.id,
-    });
-
-    const updatedProducts = await Promise.all(
-      products.map(async (p) => {
-        const newStatus = await calculateStatus(p);
-        return {
-          ...p.toObject(),
-          status: newStatus,
-        };
-      })
-    );
-
-    res.json(updatedProducts);
-  } catch (error) {
-    res.status(500).json({ message: "Failed to fetch my products" });
-  }
-};
-
-// 📦 Get Single Product
+// 📦 3. GET SINGLE PRODUCT
 export const getSingleProduct = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findById(req.params.id)
+      .populate("sellerId", "name email");
 
-    if (!product) {
-      return res.status(404).json({
-        message: "Product not found",
-      });
-    }
+    if (!product) return res.status(404).json({ message: "Product not found" });
 
-    const newStatus = await calculateStatus(product);
-
-    res.json({
-      ...product.toObject(),
-      status: newStatus,
-    });
+    const status = await calculateStatus(product);
+    res.json({ ...product.toObject(), status });
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to fetch product",
-    });
+    res.status(500).json({ message: "Failed to fetch product" });
   }
 };
 
-// 🔒 Close Bid Manually + Set Winner
-export const closeBid = async (req, res) => {
-  try {
-    const product = await Product.findById(req.params.id);
-
-    if (!product) {
-      return res.status(404).json({
-        message: "Product not found",
-      });
-    }
-
-    // Only seller can close
-    if (product.sellerId.toString() !== req.user.id) {
-      return res.status(403).json({
-        message: "Not authorized",
-      });
-    }
-
-    // If already closed
-    if (product.status === "Ended") {
-      return res.status(400).json({
-        message: "Auction already closed",
-      });
-    }
-
-    // 🔥 Determine winner
-    if (product.highestBidderId) {
-      product.winnerId = product.highestBidderId;
-    }
-
-    product.status = "Ended";
-
-    await product.save();
-
-    // 🔥 Emit update to all clients
-    await emitProductUpdate(product._id);
-
-    res.json({
-      message: "Bidding closed successfully",
-      winnerId: product.winnerId,
-      product,
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      message: "Failed to close bid",
-      error: error.message,
-    });
-  }
-};
-
-// 📝 Register For Auction
+// 📝 4. REGISTER FOR AUCTION (Paddle Number Assignment)
 export const registerForAuction = async (req, res) => {
   try {
     const { id } = req.params;
-    const { bidderName } = req.body;
     const userId = req.user.id;
+    const { bidderName } = req.body;
 
     const product = await Product.findById(id);
+    if (!product) return res.status(404).json({ message: "Auction not found" });
 
-    if (!product)
-      return res.status(404).json({ message: "Product not found" });
+    if (product.sellerId.toString() === userId) {
+      return res.status(400).json({ message: "Sellers cannot bid on their own items" });
+    }
 
-    if (product.sellerId.toString() === userId)
-      return res.status(400).json({
-        message: "Owner cannot register",
-      });
+    const alreadyRegistered = product.registeredUsers.some(u => u.userId.toString() === userId);
+    if (alreadyRegistered) return res.status(400).json({ message: "Already registered" });
 
-    if (product.status !== "Upcoming")
-      return res.status(400).json({
-        message: "Registration closed",
-      });
+    if (product.registeredUsers.length >= product.maxRegistrations) {
+      return res.status(400).json({ message: "Auction is at full capacity" });
+    }
 
-    const alreadyRegistered = product.registeredUsers.some(
-      (u) => u.userId.toString() === userId
-    );
-
-    if (alreadyRegistered)
-      return res.status(400).json({
-        message: "Already registered",
-      });
-
-    if (
-      product.registeredUsers.length >=
-      product.maxRegistrations
-    )
-      return res.status(400).json({
-        message: "Slots full",
-      });
-
-    const bidderNumber = product.registeredUsers.length + 1;
+    const bidderNumber = product.registeredUsers.length + 1; // Assign "Paddle Number"
 
     product.registeredUsers.push({
       userId,
       bidderNumber,
       bidderName: bidderName || `Bidder_${bidderNumber}`,
-      registeredAt: new Date(),
+      registeredAt: new Date()
     });
 
     await product.save();
-
-    // 🔥 Emit update (registration changed)
     await emitProductUpdate(product._id);
 
-    res.status(200).json({
-      message: "Registered successfully",
-      bidderNumber,
-    });
-
+    res.status(200).json({ message: "Registration successful", bidderNumber });
   } catch (error) {
-    console.error("REGISTER ERROR:", error);
+    res.status(500).json({ message: error.message });
+  }
+};
 
-    return res.status(500).json({
-      message: error.message,
-    });
+// 🔒 5. CLOSE AUCTION & MANAGE RESULTS
+export const closeAuction = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+
+    if (product.sellerId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    // Determine Final State
+    if (product.bidsCount > 0 && product.highestBidderId) {
+      product.winnerId = product.highestBidderId;
+      product.status = "Sold";
+      product.paymentStatus = "Pending";
+    } else {
+      product.status = "Unsold";
+    }
+
+    product.endTime = new Date(); // Close it now
+    await product.save();
+    await emitProductUpdate(product._id);
+
+    res.json({ message: "Auction closed", status: product.status, winnerId: product.winnerId });
+  } catch (error) {
+    res.status(500).json({ message: "Closing failed", error: error.message });
+  }
+};
+
+// 📦 6. GET MY LISTINGS (Seller Dashboard)
+export const getMyProducts = async (req, res) => {
+  try {
+    const products = await Product.find({ sellerId: req.user.id }).sort({ createdAt: -1 });
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch your listings" });
   }
 };

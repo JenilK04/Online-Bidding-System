@@ -24,7 +24,7 @@ const userSchema = new mongoose.Schema({
   },
 
   // 🔹 DELIVERY INFO (OPTIONAL - required only when winning)
-  mobile: {
+  phone: {
     type: String,
   },
 
