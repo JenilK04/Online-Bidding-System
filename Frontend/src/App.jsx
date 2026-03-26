@@ -21,9 +21,7 @@ function App() {
         <Route
           path="/products"
           element={
-            // <ProtectedRoute>
-              <Products />
-            // </ProtectedRoute>
+              <Products />   
           }
         />
 

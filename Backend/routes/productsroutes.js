@@ -9,10 +9,10 @@ import{
   registerForAuction
 } from "../controller/productscontroller.js";
 
-import { placeBid } from "../controller/bidController.js";
+import { placeBid, getBidsByProduct } from "../controller/bidController.js";
 
 const router = express.Router();
-router.get("/", verifyToken, getProducts);
+router.get("/", getProducts);
 router.post("/", verifyToken, addProduct);
 router.get("/my-products", verifyToken, getMyProducts);
 router.patch("/close/:id", verifyToken, closeBid);
@@ -20,6 +20,6 @@ router.get("/:id", verifyToken, getSingleProduct);
 router.post("/register/:id", verifyToken, registerForAuction);
 
 router.post("/bids/:id", verifyToken, placeBid);
-// router.get("/bids/:id", verifyToken, getBidsByProduct);
+router.get("/bids/:id", verifyToken, getBidsByProduct);
 
 export default router;

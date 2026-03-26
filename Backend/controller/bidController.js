@@ -1,111 +1,116 @@
-import mongoose from "mongoose";
 import Product from "../models/products.js";
 import { io } from "../index.js";
 
 export const placeBid = async (req, res) => {
   try {
-    if (!req.body || req.body.amount === undefined) {
-      return res.status(400).json({
-        message: "Bid amount is required",
-      });
-    }
-
     const { amount } = req.body;
     const productId = req.params.id;
     const userId = req.user.id;
 
+    if (amount === undefined) {
+      return res.status(400).json({ message: "Bid amount is required" });
+    }
+
+    // 1. Fetch product first to check status and registration
     const product = await Product.findById(productId);
 
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    // 🚫 Auction must be active
+    // 🚫 Initial Validations
     if (product.status !== "Active") {
-      return res.status(400).json({ message: "Auction not active" });
+      return res.status(400).json({ message: "Auction is not currently active" });
     }
 
-    // 🚫 Seller cannot bid
     if (product.sellerId.toString() === userId) {
-      return res.status(400).json({ message: "Seller cannot bid" });
+      return res.status(400).json({ message: "Sellers are not permitted to bid on their own items" });
     }
 
-    // 🚫 Must be registered
-    const isRegistered = product.registeredUsers.some(
+    const registration = product.registeredUsers.find(
       (u) => u.userId.toString() === userId
     );
 
-    if (!isRegistered) {
-      return res.status(400).json({ message: "Not registered for auction" });
+    if (!registration) {
+      return res.status(400).json({ message: "You must be registered to bid on this item" });
     }
 
-    // 💰 Minimum bid logic
-    const basePrice =
-      product.currentBid > 0
-        ? product.currentBid
-        : product.startingPrice;
+    // 💰 Calculate Minimum Required Bid
+    const currentHigh = product.currentBid > 0 ? product.currentBid : product.startingPrice;
+    const requiredMin = currentHigh + product.bidIncrement;
 
-    const minBid = basePrice + product.bidIncrement;
-
-    if (amount < minBid) {
-      return res.status(400).json({
-        message: `Minimum bid must be ₹${minBid}`,
-      });
+    if (amount < requiredMin) {
+      return res.status(400).json({ message: `Bid too low. Minimum required: ₹${requiredMin}` });
     }
 
-    // 🔥 Update
-    product.currentBid = amount;
-    product.highestBidderId = userId;
-    product.bidsCount += 1;
+    // 🔥 ATOMIC UPDATE (Prevents Race Conditions)
+    // We only update IF the currentBid in DB is still what we thought it was
+    const updatedProduct = await Product.findOneAndUpdate(
+      { 
+        _id: productId, 
+        currentBid: product.currentBid // Ensure no one else bid while we were processing
+      },
+      {
+        $set: { 
+          currentBid: amount, 
+          highestBidderId: userId 
+        },
+        $inc: { bidsCount: 1 },
+        $push: { 
+          bids: { 
+            amount, 
+            bidderId: userId, 
+            bidderName: registration.bidderName,
+            createdAt: new Date() 
+          } 
+        }
+      },
+      { new: true } // Return the updated document
+    );
 
-    await product.save();
+    if (!updatedProduct) {
+      return res.status(409).json({ message: "Someone else just placed a higher bid. Please try again." });
+    }
 
-    // 🔥 Emit full update
-    io.to(productId).emit("productUpdated", product);
-
-    // ⚡ Optional lightweight update
-    io.to(productId).emit("bidUpdated", {
-      productId,
-      currentBid: amount,
-      bidsCount: product.bidsCount,
-      highestBidderId: userId,
-    });
+    // ⚡ Real-time Emitters
+    io.to(productId).emit("productUpdated", updatedProduct);
+    
+    // Emit specific 'bidPlaced' event for the "Live Ledger" we built earlier
+    io.to(productId).emit("bidPlaced", updatedProduct.bids[updatedProduct.bids.length - 1]);
 
     return res.status(200).json({
       success: true,
       message: "Bid placed successfully",
-      product,
+      product: updatedProduct,
     });
 
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server Error" });
+    console.error("Bid Error:", error);
+    return res.status(500).json({ message: "Internal Server Error" });
   }
 };
-// export const getBidsByProduct = async (req, res) => {
-//   try {
-//     const productId  = req.params.id;
 
-//     const product = await Product.findById(productId);
+/**
+ * Get Bids for Merchant View
+ */
+export const getBidsByProduct = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id).select("bids sellerId");
 
-//     if (!product) {
-//       return res.status(404).json({
-//         message: "Product not found",
-//       });
-//     }
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
 
-//     // Only seller can view bid history
-//     if (product.sellerId.toString() !== req.user.id) {
-//       return res.status(403).json({
-//         message: "Not authorized to view bids",
-//       });
-//     }
+    // Security: Only the seller or the registered bidders should see full history
+    if (product.sellerId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Unauthorized access to bid history" });
+    }
 
-//     res.json(product.bids || []);
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({
-//       message: "Failed to fetch bids",
-//     });
-//   }
-// };
+    // Return bids sorted by newest first
+    const sortedBids = (product.bids || []).sort((a, b) => b.createdAt - a.createdAt);
+    
+    res.json(sortedBids);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch bid history" });
+  }
+};

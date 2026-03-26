@@ -47,6 +47,13 @@ const productSchema = new mongoose.Schema(
       min: 1,
     },
 
+    bids: [{
+    amount: Number,
+    bidderId: mongoose.Schema.Types.ObjectId,
+    bidderName: String,
+    createdAt: { type: Date, default: Date.now }
+   }],
+
     bidsCount: {
       type: Number,
       default: 0,
