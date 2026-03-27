@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import API from "../services/api";
 import { 
   FiBox, FiCamera, FiClock, FiShield, 
-  FiTruck, FiInfo, FiTag, FiX, FiSettings 
+  FiTruck, FiInfo, FiTag, FiX, FiSettings, FiMapPin 
 } from "react-icons/fi";
 
 const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
@@ -11,35 +11,37 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
   const [errors, setErrors] = useState({});
 
   const [form, setForm] = useState({
-    // Identity
     title: "", subtitle: "", sku: "", category: "Electronics",
-    // Specifics
     brand: "", modelNumber: "", condition: "Used - Excellent", description: "",
-    // Auction Engine
     startingPrice: "", bidIncrement: 10, maxRegistrations: 100,
     startTime: "", endTime: "",
-    // Anti-Snipe (The "Soft Close" Engine)
-    antiSnipeWindow: 60, extensionDuration: 120,
-    // Return Policy
+    antiSnipeWindow: 60, 
+    extensionDuration: 120, // 👈 Added this
+    
+    // 📍 NEW: Seller Pickup Address
+    sellerAddress: {
+      street: "",
+      city: "",
+      state: "",
+      zipCode: "",
+    },
+    
     returnPolicy: {
       acceptsReturns: false,
       returnWindow: "No Returns",
       returnShippingPaidBy: "Buyer",
       restockingFee: 0,
     },
-    // Logistics
     shippingWeight: "",
     dimensions: { length: "", width: "", height: "" },
-    status: "Draft"
+    status: "Scheduled" // 👈 Changed default to Scheduled for pro listing
   });
 
   if (!isOpen) return null;
 
-  // --- Handlers ---
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     
-    // Handle Nested Objects (Return Policy, Dimensions, etc.)
     if (name.includes(".")) {
       const [parent, child] = name.split(".");
       setForm(prev => ({
@@ -67,7 +69,8 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await API.post("/products", { ...form, images });
+      // images are sent as base64 array to match controller
+      await API.post("/products", { ...form, images }); 
       onSuccess();
       onClose();
     } catch (err) {
@@ -110,6 +113,17 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
             </div>
           </div>
 
+          {/* 📍 NEW SECTION: SELLER LOCATION (For Pickup) */}
+          <div className="bg-white p-8 rounded-[24px] shadow-sm border border-slate-100 space-y-6">
+            <h3 className="flex items-center gap-3 text-slate-800 font-bold"><FiMapPin className="text-blue-600"/> Item Location (Pickup Address)</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <input name="sellerAddress.street" placeholder="Street Address" className="md:col-span-2 p-4 bg-slate-50 border rounded-2xl" onChange={handleChange} required />
+              <input name="sellerAddress.city" placeholder="City" className="p-4 bg-slate-50 border rounded-2xl" onChange={handleChange} required />
+              <input name="sellerAddress.state" placeholder="State" className="p-4 bg-slate-50 border rounded-2xl" onChange={handleChange} required />
+              <input name="sellerAddress.zipCode" placeholder="Zip Code" className="p-4 bg-slate-50 border rounded-2xl" onChange={handleChange} required />
+            </div>
+          </div>
+
           {/* SECTION 2: SPECIFICS & IMAGES */}
           <div className="bg-white p-8 rounded-[24px] shadow-sm border border-slate-100 space-y-6">
             <h3 className="flex items-center gap-3 text-slate-800 font-bold"><FiInfo className="text-blue-600"/> Item Specifics</h3>
@@ -121,8 +135,11 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
             <div className="space-y-4">
               <label className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><FiCamera /> Photos (Max 12)</label>
               <div className="flex flex-wrap gap-4">
-                {images.map((img, i) => <img key={i} src={img} className="w-20 h-20 object-cover rounded-xl border" />)}
-                <label className="w-20 h-20 border-2 border-dashed rounded-xl flex items-center justify-center cursor-pointer hover:bg-slate-50"><span className="text-2xl text-slate-300">+</span><input type="file" multiple className="hidden" onChange={handleImageChange} /></label>
+                {images.map((img, i) => <img key={i} src={img} className="w-20 h-20 object-cover rounded-xl border" alt="" />)}
+                <label className="w-20 h-20 border-2 border-dashed rounded-xl flex items-center justify-center cursor-pointer hover:bg-slate-50">
+                  <span className="text-2xl text-slate-300">+</span>
+                  <input type="file" multiple className="hidden" onChange={handleImageChange} />
+                </label>
               </div>
             </div>
           </div>
@@ -135,16 +152,22 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
               <input type="number" name="bidIncrement" placeholder="Increment ₹" className="p-4 bg-slate-50 border rounded-2xl" onChange={handleChange} />
               <input type="number" name="maxRegistrations" placeholder="Max Bidders" className="p-4 bg-slate-50 border rounded-2xl" onChange={handleChange} />
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Start</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Start Time</label>
                 <input type="datetime-local" name="startTime" className="w-full p-4 bg-slate-50 border rounded-2xl" onChange={handleChange} required />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">End</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">End Time</label>
                 <input type="datetime-local" name="endTime" className="w-full p-4 bg-slate-50 border rounded-2xl" onChange={handleChange} required />
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-blue-600 uppercase ml-2 flex items-center gap-1"><FiSettings /> Snipe Window (s)</label>
-                <input type="number" name="antiSnipeWindow" value={form.antiSnipeWindow} className="w-full p-4 bg-blue-50/30 border border-blue-100 rounded-2xl font-bold" onChange={handleChange} />
+              <div className="grid grid-cols-2 gap-2">
+                 <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-blue-600 uppercase ml-2 flex items-center gap-1"><FiSettings /> Snipe (s)</label>
+                    <input type="number" name="antiSnipeWindow" value={form.antiSnipeWindow} className="w-full p-4 bg-blue-50/30 border border-blue-100 rounded-2xl" onChange={handleChange} />
+                 </div>
+                 <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-blue-600 uppercase ml-2">Ext. (s)</label>
+                    <input type="number" name="extensionDuration" value={form.extensionDuration} className="w-full p-4 bg-blue-50/30 border border-blue-100 rounded-2xl" onChange={handleChange} />
+                 </div>
               </div>
             </div>
           </div>
@@ -154,7 +177,7 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
             <div className="bg-white p-8 rounded-[24px] shadow-sm border border-slate-100 space-y-6">
               <h3 className="flex items-center gap-3 text-slate-800 font-bold"><FiShield className="text-blue-600"/> Returns</h3>
               <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl">
-                <input type="checkbox" name="returnPolicy.acceptsReturns" className="w-5 h-5 rounded" onChange={handleChange} />
+                <input type="checkbox" name="returnPolicy.acceptsReturns" checked={form.returnPolicy.acceptsReturns} className="w-5 h-5 rounded" onChange={handleChange} />
                 <span className="text-sm font-bold text-slate-600">Accept Returns</span>
               </div>
               <select name="returnPolicy.returnWindow" className="w-full p-4 bg-slate-50 border rounded-2xl" onChange={handleChange}>

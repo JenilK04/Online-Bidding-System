@@ -1,7 +1,9 @@
 import Product from "../models/products.js";
 import { io } from "../index.js";
-
-// 🔥 Helper: Emit updated product with real-time status
+/**
+ * 🔥 Helper: Emit updated product with real-time status
+ * Ensures all connected clients see the current bid, time, and winner status.
+ */
 const emitProductUpdate = async (productId) => {
   const updatedProduct = await Product.findById(productId);
   if (updatedProduct) {
@@ -9,37 +11,43 @@ const emitProductUpdate = async (productId) => {
   }
 };
 
-// 🔥 Enterprise Status Engine (Handles Soft-Close & Expiration)
+/**
+ * 🔥 Enterprise Status Engine
+ * Handles transitions: Draft -> Scheduled -> Active -> Sold/Unsold
+ * Now includes Auto-Winner selection and Seller/Buyer logistics sync.
+ */
 const calculateStatus = async (product) => {
   const now = new Date();
   const startTime = new Date(product.startTime);
   const endTime = new Date(product.endTime);
 
-  // If already finalized, don't re-calculate
+  // If finalized (Sold, Unsold, Cancelled), stop processing
   if (["Sold", "Unsold", "Cancelled"].includes(product.status)) {
     return product.status;
   }
 
   let newStatus = product.status;
 
-  // Scheduled -> Active
+  // 1. Scheduled -> Active (Auction Starts)
   if (now >= startTime && now < endTime && product.status === "Scheduled") {
     newStatus = "Active";
   } 
   
-  // 🔥 ACTIVE/SCHEDULED -> FINALIZED (The Auto-Win Logic)
+  // 2. Active -> Finalized (The Auto-Win Logic)
   else if (now >= endTime && (product.status === "Active" || product.status === "Scheduled")) {
     
-    // Check if there was at least one bid
+    // Check for highest bidder
     if (product.bidsCount > 0 && product.highestBidderId) {
       product.winnerId = product.highestBidderId;
       product.paymentStatus = "Pending";
+      product.deliveryStatus = "Pending";
       newStatus = "Sold";
     } else {
       newStatus = "Unsold";
     }
   }
 
+  // Save changes if status shifted
   if (newStatus !== product.status) {
     product.status = newStatus;
     await product.save();
@@ -49,7 +57,10 @@ const calculateStatus = async (product) => {
   return newStatus;
 };
 
-// ➕ 1. ADD PRODUCT (Handles nested Return Policy & Logistics)
+/**
+ * ➕ ADD PRODUCT (Updated for Logistics & Address)
+ * Now captures sellerAddress for pickup and initializes Anti-Snipe config.
+ */
 export const addProduct = async (req, res) => {
   try {
     const {
@@ -57,13 +68,15 @@ export const addProduct = async (req, res) => {
       condition, images, description, startingPrice,
       bidIncrement, maxRegistrations, startTime, endTime,
       antiSnipeWindow, extensionDuration, returnPolicy,
-      shippingWeight, dimensions
+      shippingWeight, dimensions,
+      sellerAddress // 📍 Captured for pickup logic
     } = req.body;
 
     const product = new Product({
       title, subtitle, sku, category, brand, modelNumber,
       condition, images, description,
       sellerId: req.user.id,
+      sellerAddress, // Maps to the new schema field
       startingPrice,
       bidIncrement: bidIncrement || 10,
       maxRegistrations: maxRegistrations || 100,
@@ -71,131 +84,237 @@ export const addProduct = async (req, res) => {
       endTime,
       antiSnipeWindow: antiSnipeWindow || 60,
       extensionDuration: extensionDuration || 120,
-      returnPolicy, // Matches nested schema object
+      returnPolicy, 
       shippingWeight,
-      dimensions,   // Matches nested schema object
-      status: "Draft", // Pro apps start as Draft
+      dimensions,   
+      status: "Scheduled", // Professional listings usually go straight to Scheduled
     });
 
     await product.save();
+    
+    // Broadcast to global feed
     io.emit("productCreated", product);
 
-    res.status(201).json({ message: "Listing created successfully", product });
+    res.status(201).json({ 
+      message: "Listing created and scheduled successfully", 
+      product 
+    });
   } catch (error) {
-    res.status(500).json({ message: "Failed to add product", error: error.message });
+    res.status(500).json({ 
+      message: "Failed to add product", 
+      error: error.message 
+    });
   }
 };
 
-// 📦 2. GET ALL PRODUCTS (Filtered for Gallery)
 export const getProducts = async (req, res) => {
   try {
-    // Only show live/scheduled auctions on public gallery
-    const products = await Product.find({ 
-      status: { $in: ["Scheduled", "Active"] },
-      isArchived: { $ne: true } 
-    }).sort({ startTime: 1 });
+    // We search for Active/Scheduled but also "Ended" (to show recently closed items)
+    const products = await Product.find({
+      status: { $in: ["Active", "Scheduled", "Sold", "Unsold"] }
+    })
+    .sort({ endTime: 1 }) // Show items ending soonest first
+    .limit(50);
 
+    // 🔥 Sync every product's status before sending to UI
     const updatedProducts = await Promise.all(
       products.map(async (p) => {
-        const status = await calculateStatus(p);
-        return { ...p.toObject(), status };
+        const currentStatus = await calculateStatus(p);
+        return {
+          ...p.toObject(),
+          status: currentStatus,
+        };
       })
     );
 
-    res.json(updatedProducts);
+    res.status(200).json(updatedProducts);
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch gallery" });
+    console.error("GET PRODUCTS ERROR:", error);
+    res.status(500).json({ 
+      message: "Failed to fetch gallery", 
+      error: error.message 
+    });
   }
 };
 
-// 📦 3. GET SINGLE PRODUCT
-export const getSingleProduct = async (req, res) => {
+/**
+ * 📦 GET SINGLE PRODUCT (Seller's Private View)
+ * Includes: Bidder List, Shipping Dimensions, and Return Policy.
+ */
+export const getMyProducts = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id)
-      .populate("sellerId", "name email");
+    const userId = req.user.id; // Correctly identified from your Auth Middleware
 
-    if (!product) return res.status(404).json({ message: "Product not found" });
+    // 1. Fetch ONLY products created by this specific user
+    // We sort by 'createdAt' so the newest listings appear first
+    const products = await Product.find({ sellerId: userId }).sort({ createdAt: -1 });
 
-    const status = await calculateStatus(product);
-    res.json({ ...product.toObject(), status });
+    // 2. Sync Statuses for the entire list
+    // This ensures Scheduled items move to Active and Active move to Sold/Unsold
+    const updatedProducts = await Promise.all(
+      products.map(async (product) => {
+        const currentStatus = await calculateStatus(product);
+        
+        return {
+          ...product.toObject(),
+          status: currentStatus,
+          // Extra logic for the seller dashboard
+          isReadyForShipping: currentStatus === "Sold" && product.paymentStatus === "Paid"
+        };
+      })
+    );
+
+    // 3. Return the array of products
+    res.status(200).json(updatedProducts);
+
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch product" });
+    console.error("GET MY PRODUCTS ERROR:", error);
+    res.status(500).json({ 
+      message: "Failed to fetch your listings", 
+      error: error.message 
+    });
   }
 };
 
-// 📝 4. REGISTER FOR AUCTION (Paddle Number Assignment)
+/**
+ * 📦 GET SINGLE PRODUCT DETAILS
+ * Path: GET /api/products/:id
+ */
+export const getProductById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.id; // Optional: depending on if user is logged in
+
+    // 1. Fetch product and populate Seller info (eBay style)
+    // We populate only public seller info to maintain privacy
+    const product = await Product.findById(id).populate("sellerId", "name avatar ratings");
+
+    if (!product) {
+      return res.status(404).json({ message: "Product listing not found" });
+    }
+
+    // 2. 🔥 Run Status Engine
+    // This ensures that if the endTime has passed, the status flips to 'Sold' 
+    // and the winner is assigned BEFORE the user sees the page.
+    const currentStatus = await calculateStatus(product);
+
+    // 3. 🛡️ Bidder Privacy Logic
+    // On the public details page, we hide real names and show "Paddle Numbers"
+    const sanitizedRegisteredUsers = product.registeredUsers.map(u => ({
+      userId: u.userId, // We keep the ID for internal logic but won't show it in the UI
+      bidderNumber: u.bidderNumber,
+      bidderName: u.bidderName, // Usually "Bidder_1", etc.
+      registeredAt: u.registeredAt
+    }));
+
+    // 4. 🔒 Seller-Only Data Logic
+    // Only the owner should see the exact buyer contact or specific logistics
+    const isOwner = userId && product.sellerId._id.toString() === userId;
+
+    const responseData = {
+      ...product.toObject(),
+      status: currentStatus,
+      registeredUsers: isOwner ? product.registeredUsers : sanitizedRegisteredUsers,
+      // Hide sensitive buyer info from public
+      buyerContactNumber: isOwner ? product.buyerContactNumber : undefined,
+      buyerShippingAddress: isOwner ? product.buyerShippingAddress : undefined,
+    };
+
+    res.status(200).json(responseData);
+  } catch (error) {
+    console.error("PRODUCT DETAILS ERROR:", error);
+    res.status(500).json({ 
+      message: "Error fetching product details", 
+      error: error.message 
+    });
+  }
+};
+/**
+ * 📝 REGISTER FOR AUCTION
+ * Assigns a unique "Paddle Number" and alias to the bidder.
+ */
 export const registerForAuction = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    const { bidderName } = req.body;
+    
+    // 🛡️ Safety: Default to empty object if body is missing
+    const { bidderName } = req.body || {}; 
+
+    if (!bidderName) {
+      return res.status(400).json({ message: "A bidder name or alias is required." });
+    }
 
     const product = await Product.findById(id);
     if (!product) return res.status(404).json({ message: "Auction not found" });
 
     if (product.sellerId.toString() === userId) {
-      return res.status(400).json({ message: "Sellers cannot bid on their own items" });
+      return res.status(400).json({ message: "Sellers cannot register for their own auctions." });
     }
 
     const alreadyRegistered = product.registeredUsers.some(u => u.userId.toString() === userId);
-    if (alreadyRegistered) return res.status(400).json({ message: "Already registered" });
+    if (alreadyRegistered) return res.status(400).json({ message: "Already registered." });
 
-    if (product.registeredUsers.length >= product.maxRegistrations) {
-      return res.status(400).json({ message: "Auction is at full capacity" });
-    }
-
-    const bidderNumber = product.registeredUsers.length + 1; // Assign "Paddle Number"
+    const bidderNumber = product.registeredUsers.length + 1;
 
     product.registeredUsers.push({
       userId,
       bidderNumber,
-      bidderName: bidderName || `Bidder_${bidderNumber}`,
+      bidderName: bidderName.trim(),
       registeredAt: new Date()
     });
 
     await product.save();
-    await emitProductUpdate(product._id);
+    io.to(id).emit("productUpdated", product);
 
     res.status(200).json({ message: "Registration successful", bidderNumber });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: "Registration failed", error: error.message });
   }
 };
 
-// 🔒 5. CLOSE AUCTION & MANAGE RESULTS
+/**
+ * 🔒 CLOSE AUCTION MANUALLY
+ * Finalizes the auction immediately, locking in the winner if bids exist.
+ */
 export const closeAuction = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const { id } = req.params;
+    const userId = req.user.id;
 
-    if (product.sellerId.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Unauthorized" });
+    const product = await Product.findById(id);
+    if (!product) return res.status(404).json({ message: "Product not found" });
+
+    // 1. Security: Only the seller can manually close the auction
+    if (product.sellerId.toString() !== userId) {
+      return res.status(403).json({ message: "Unauthorized: Only the seller can end this auction" });
     }
 
-    // Determine Final State
+    // 2. Determine Final State (The Winner Logic)
     if (product.bidsCount > 0 && product.highestBidderId) {
       product.winnerId = product.highestBidderId;
       product.status = "Sold";
       product.paymentStatus = "Pending";
+      product.deliveryStatus = "Pending";
     } else {
       product.status = "Unsold";
     }
 
-    product.endTime = new Date(); // Close it now
+    // 3. Set end time to now
+    product.endTime = new Date();
+    
     await product.save();
-    await emitProductUpdate(product._id);
 
-    res.json({ message: "Auction closed", status: product.status, winnerId: product.winnerId });
-  } catch (error) {
-    res.status(500).json({ message: "Closing failed", error: error.message });
-  }
-};
+    // 4. Real-time Broadcast: Notify all users the auction has ended
+    io.to(id).emit("productUpdated", product);
+    io.emit("statusChanged", { productId: id, newStatus: product.status });
 
-// 📦 6. GET MY LISTINGS (Seller Dashboard)
-export const getMyProducts = async (req, res) => {
-  try {
-    const products = await Product.find({ sellerId: req.user.id }).sort({ createdAt: -1 });
-    res.json(products);
+    res.json({ 
+      message: `Auction manually closed as ${product.status}`, 
+      status: product.status, 
+      winnerId: product.winnerId 
+    });
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch your listings" });
+    res.status(500).json({ message: "Failed to close auction", error: error.message });
   }
 };

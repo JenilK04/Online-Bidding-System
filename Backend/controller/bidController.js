@@ -1,22 +1,22 @@
 import Product from "../models/products.js";
+import Bid from "../models/Bid.js"; // Your new Bid model
 import { io } from "../index.js";
 
+/**
+ * 🔥 PLACE BID (Real-Time Engine)
+ * Handles: Validations, Anti-Snipe Extension, Atomic Updates, and Socket Broadcasts.
+ */
 export const placeBid = async (req, res) => {
   try {
     const { amount } = req.body;
     const productId = req.params.id;
     const userId = req.user.id;
 
-    if (amount === undefined) {
-      return res.status(400).json({ message: "Bid amount is required" });
-    }
+    if (!amount) return res.status(400).json({ message: "Bid amount is required" });
 
-    // 1. Fetch product first to check status and registration
+    // 1. Fetch product to check status and registration
     const product = await Product.findById(productId);
-
-    if (!product) {
-      return res.status(404).json({ message: "Product not found" });
-    }
+    if (!product) return res.status(404).json({ message: "Product not found" });
 
     // 🚫 Initial Validations
     if (product.status !== "Active") {
@@ -24,59 +24,75 @@ export const placeBid = async (req, res) => {
     }
 
     if (product.sellerId.toString() === userId) {
-      return res.status(400).json({ message: "Sellers are not permitted to bid on their own items" });
+      return res.status(400).json({ message: "Sellers cannot bid on their own items" });
     }
 
-    const registration = product.registeredUsers.find(
-      (u) => u.userId.toString() === userId
-    );
-
+    const registration = product.registeredUsers.find(u => u.userId.toString() === userId);
     if (!registration) {
-      return res.status(400).json({ message: "You must be registered to bid on this item" });
+      return res.status(400).json({ message: "You must be registered to bid" });
     }
 
     // 💰 Calculate Minimum Required Bid
     const currentHigh = product.currentBid > 0 ? product.currentBid : product.startingPrice;
-    const requiredMin = currentHigh + product.bidIncrement;
+    const requiredMin = currentHigh + (product.bidIncrement || 1);
 
     if (amount < requiredMin) {
-      return res.status(400).json({ message: `Bid too low. Minimum required: ₹${requiredMin}` });
+      return res.status(400).json({ message: `Bid too low. Minimum: ₹${requiredMin}` });
     }
 
-    // 🔥 ATOMIC UPDATE (Prevents Race Conditions)
-    // We only update IF the currentBid in DB is still what we thought it was
+    // 🔥 2. ANTI-SNIPE LOGIC (Soft Close)
+    const now = new Date();
+    const endTime = new Date(product.endTime);
+    const secondsRemaining = (endTime.getTime() - now.getTime()) / 1000;
+
+    let newEndTime = product.endTime;
+    let isExtended = product.isExtended;
+
+    // If bid is placed within the "Anti-Snipe Window" (e.g., last 60s)
+    if (secondsRemaining <= product.antiSnipeWindow) {
+      newEndTime = new Date(endTime.getTime() + product.extensionDuration * 1000);
+      isExtended = true;
+    }
+
+    // 🛡️ 3. ATOMIC UPDATE (Optimistic Concurrency)
+    // Only update if currentBid hasn't changed since we read it
     const updatedProduct = await Product.findOneAndUpdate(
       { 
         _id: productId, 
-        currentBid: product.currentBid // Ensure no one else bid while we were processing
+        currentBid: product.currentBid 
       },
       {
         $set: { 
           currentBid: amount, 
-          highestBidderId: userId 
+          highestBidderId: userId,
+          endTime: newEndTime,
+          isExtended: isExtended,
+          lastBidAt: now
         },
         $inc: { bidsCount: 1 },
-        $push: { 
-          bids: { 
-            amount, 
-            bidderId: userId, 
-            bidderName: registration.bidderName,
-            createdAt: new Date() 
-          } 
-        }
       },
-      { new: true } // Return the updated document
+      { new: true }
     );
 
     if (!updatedProduct) {
-      return res.status(409).json({ message: "Someone else just placed a higher bid. Please try again." });
+      return res.status(409).json({ message: "Outbid! Someone else just placed a higher bid." });
     }
 
-    // ⚡ Real-time Emitters
+    // 📜 4. SAVE TO BID HISTORY MODEL
+    const newBidRecord = await Bid.create({
+      productId,
+      bidderId: userId,
+      bidderName: registration.bidderName,
+      amount,
+      bidTime: now
+    });
+
+    // ⚡ 5. REAL-TIME EMITTERS
+    // Update the entire product room (price, countdown, bidder)
     io.to(productId).emit("productUpdated", updatedProduct);
     
-    // Emit specific 'bidPlaced' event for the "Live Ledger" we built earlier
-    io.to(productId).emit("bidPlaced", updatedProduct.bids[updatedProduct.bids.length - 1]);
+    // Broadcast specific bid event for the "Live Ledger/History" component
+    io.to(productId).emit("newBidAdded", newBidRecord);
 
     return res.status(200).json({
       success: true,
@@ -91,25 +107,16 @@ export const placeBid = async (req, res) => {
 };
 
 /**
- * Get Bids for Merchant View
+ * 📦 GET BID HISTORY (Real-Time Ledger)
  */
 export const getBidsByProduct = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id).select("bids sellerId");
-
-    if (!product) {
-      return res.status(404).json({ message: "Product not found" });
-    }
-
-    // Security: Only the seller or the registered bidders should see full history
-    if (product.sellerId.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Unauthorized access to bid history" });
-    }
-
-    // Return bids sorted by newest first
-    const sortedBids = (product.bids || []).sort((a, b) => b.createdAt - a.createdAt);
+    // Fetch from the dedicated Bid collection for better performance
+    const bids = await Bid.find({ productId: req.params.id })
+      .sort({ bidTime: -1 })
+      .limit(20);
     
-    res.json(sortedBids);
+    res.json(bids);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch bid history" });
   }

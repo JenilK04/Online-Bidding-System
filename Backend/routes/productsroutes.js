@@ -4,22 +4,21 @@ import{
   addProduct,
   getProducts,
   getMyProducts,
-  closeBid,
-  getSingleProduct,
+  getProductById,
+  closeAuction,
   registerForAuction
+
 } from "../controller/productscontroller.js";
 
-import { placeBid, getBidsByProduct } from "../controller/bidController.js";
+;
 
 const router = express.Router();
 router.get("/", getProducts);
 router.post("/", verifyToken, addProduct);
 router.get("/my-products", verifyToken, getMyProducts);
-router.patch("/close/:id", verifyToken, closeBid);
-router.get("/:id", verifyToken, getSingleProduct);
+router.patch("/close/:id", verifyToken, closeAuction);
+router.get("/:id", verifyToken, getProductById);
 router.post("/register/:id", verifyToken, registerForAuction);
 
-router.post("/bids/:id", verifyToken, placeBid);
-router.get("/bids/:id", verifyToken, getBidsByProduct);
 
 export default router;

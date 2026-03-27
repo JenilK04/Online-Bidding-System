@@ -1,10 +1,10 @@
-import express from "express";
-import { updateOrderDetails } from "../controller/orderController.js";
-import authMiddleware from "../middleware/jwt.js";
+// import express from "express";
+// import { updateOrderDetails } from "../controller/orderController.js";
+// import authMiddleware from "../middleware/jwt.js";
 
-const router = express.Router();
+// const router = express.Router();
 
-// 📦 Add / Update Address & Contact
-router.post("/order-details/:id", authMiddleware, updateOrderDetails);
+// // 📦 Add / Update Address & Contact
+// router.post("/order-details/:id", authMiddleware, updateOrderDetails);
 
-export default router;
+// export default router;

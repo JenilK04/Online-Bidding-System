@@ -26,6 +26,17 @@ const productSchema = new mongoose.Schema(
 
     // --- 🔹 LIVE AUCTION ENGINE ---
     sellerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    
+    // 📍 SELLER PICKUP ADDRESS (New)
+    // For local pickup items, the buyer needs to know where to go.
+    sellerAddress: {
+      street: String,
+      city: String,
+      state: String,
+      zipCode: String,
+      country: { type: String, default: "India" }
+    },
+
     startingPrice: { type: Number, required: true, min: 1 },
     currentBid: { type: Number, default: 0 },
     bidIncrement: { type: Number, default: 10 },
@@ -62,20 +73,13 @@ const productSchema = new mongoose.Schema(
       restockingFee: { type: Number, default: 0 }
     },
 
-    // --- 🔹 TIMING & ANTI-SNIPE (FIXED) ---
+    // --- 🔹 TIMING & ANTI-SNIPE ---
     startTime: { type: Date, required: true },
     endTime: { type: Date, required: true },
     lastBidAt: { type: Date },
     isExtended: { type: Boolean, default: false },
-    // 🛡️ Anti-Snipe Config
-    antiSnipeWindow: { 
-        type: Number, 
-        default: 60 
-    }, // Seconds before endTime that trigger an extension
-    extensionDuration: { 
-        type: Number, 
-        default: 120 
-    }, // Seconds to add to the endTime if a snipe is detected
+    antiSnipeWindow: { type: Number, default: 60 }, 
+    extensionDuration: { type: Number, default: 120 }, 
 
     // --- 🔹 LOGISTICS & STATUS ---
     shippingWeight: { type: Number }, 
@@ -91,10 +95,27 @@ const productSchema = new mongoose.Schema(
       index: true
     },
 
-    // --- 🔹 RESULTS ---
+    // --- 🔹 BUYER FULFILLMENT (New & Updated) ---
     winnerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    
+    // 🚚 BUYER SHIPPING DETAILS
+    // Populated after the auction ends and buyer provides info
+    buyerContactNumber: { type: String, trim: true },
+    buyerShippingAddress: {
+      fullName: String,
+      street: String,
+      city: String,
+      state: String,
+      zipCode: String,
+      phone: String
+    },
+
     paymentStatus: { type: String, enum: ["Pending", "Paid"], default: "Pending" },
-    deliveryStatus: { type: String, enum: ["Pending", "Shipped", "Delivered"], default: "Pending" }
+    deliveryStatus: { 
+      type: String, 
+      enum: ["Pending", "Shipped", "Delivered", "Picked Up"], 
+      default: "Pending" 
+    }
   },
   { timestamps: true }
 );
