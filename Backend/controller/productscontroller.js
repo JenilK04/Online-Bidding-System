@@ -285,36 +285,72 @@ export const closeAuction = async (req, res) => {
     const product = await Product.findById(id);
     if (!product) return res.status(404).json({ message: "Product not found" });
 
-    // 1. Security: Only the seller can manually close the auction
+    // 1. Security check
     if (product.sellerId.toString() !== userId) {
-      return res.status(403).json({ message: "Unauthorized: Only the seller can end this auction" });
+      return res.status(403).json({ message: "Unauthorized" });
     }
 
-    // 2. Determine Final State (The Winner Logic)
+    // 2. Winner Logic
     if (product.bidsCount > 0 && product.highestBidderId) {
       product.winnerId = product.highestBidderId;
       product.status = "Sold";
       product.paymentStatus = "Pending";
-      product.deliveryStatus = "Pending";
     } else {
       product.status = "Unsold";
     }
 
-    // 3. Set end time to now
     product.endTime = new Date();
-    
     await product.save();
 
-    // 4. Real-time Broadcast: Notify all users the auction has ended
+    // 🔥 THE GLOBAL REAL-TIME SHOUT
+    // This updates the Products page and the Seller Hub instantly
+    io.emit("productUpdated", product); 
+    
+    // This updates anyone specifically looking at the item details
     io.to(id).emit("productUpdated", product);
-    io.emit("statusChanged", { productId: id, newStatus: product.status });
 
-    res.json({ 
-      message: `Auction manually closed as ${product.status}`, 
-      status: product.status, 
-      winnerId: product.winnerId 
-    });
+    res.json(product);
   } catch (error) {
-    res.status(500).json({ message: "Failed to close auction", error: error.message });
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const saveOrderDetails = async (req, res) => {
+  const { address, city, contact } = req.body;
+  try {
+    const product = await Product.findById(req.params.id);
+
+    // Security: Only the winner can add shipping info
+    if (product.highestBidder.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    product.shippingAddress = address;
+    product.city = city;
+    product.contactNumber = contact;
+    
+    await product.save();
+    res.status(200).json({ message: "Shipping details updated", product });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to save details" });
+  }
+};
+
+// 3. Process Mock Payment
+export const processPayment = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+
+    if (product.highestBidder.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    product.isPaid = true;
+    product.deliveryStatus = "Pending"; // Moves to seller's queue
+    
+    await product.save();
+    res.status(200).json({ message: "Payment Successful", product });
+  } catch (error) {
+    res.status(500).json({ message: "Payment failed" });
   }
 };

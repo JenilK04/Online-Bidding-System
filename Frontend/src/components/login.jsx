@@ -32,23 +32,38 @@ const Login = () => {
   });
 
   const onSubmit = async (data) => {
-    try {
-      setLoading(true);
-      setApiError("");
-      
-      const res = await API.post("auth/login", data);
+  try {
+    setLoading(true);
+    setApiError("");
+    
+    const res = await API.post("auth/login", data);
 
-      // ✅ Secure Storage
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("user", JSON.stringify(res.data.user));
+    // 1. Secure Storage
+    localStorage.setItem("token", res.data.token);
+    localStorage.setItem("user", JSON.stringify(res.data.user));
 
+    // 2. 🛡️ Role-Based Redirection Logic
+    const userRole = res.data.user.role;
+
+    if (userRole === "admin") {
+      // Send Admin to the Command Center
+      navigate("/admin/dashboard");
+    } else {
+      // Send regular Users to the Product Gallery
       navigate("/products");
-    } catch (err) {
-      setApiError(err.response?.data?.message || "Invalid email or password");
-    } finally {
-      setLoading(false);
     }
-  };
+
+  } catch (err) {
+    // Check if the user is banned (using the 403 status we set in the controller)
+    if (err.response?.status === 403) {
+      setApiError("Your account has been suspended. Please contact support.");
+    } else {
+      setApiError(err.response?.data?.message || "Invalid email or password");
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">

@@ -8,28 +8,20 @@ const router = express.Router();
 /* REGISTER */
 export const register = async (req, res) => {
   try {
-    const { firstName, lastName, email, password, confirmPassword, phone } = req.body;
+    const { firstName, lastName, email, password, confirmPassword, phone, role } = req.body;
 
-    // 🔴 EMPTY FIELD VALIDATION
+    // 🔴 VALIDATIONS (Keep your existing checks...)
     if (!firstName || !lastName || !email || !password || !confirmPassword) {
-      return res.status(400).json({
-        message: "All fields are required",
-      });
+      return res.status(400).json({ message: "All fields are required" });
     }
 
-    // 🔴 PASSWORD MATCH VALIDATION
     if (password !== confirmPassword) {
-      return res.status(400).json({
-        message: "Passwords do not match",
-      });
+      return res.status(400).json({ message: "Passwords do not match" });
     }
 
-    // 🔴 CHECK EXISTING USER
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({
-        message: "Email already registered",
-      });
+      return res.status(400).json({ message: "Email already registered" });
     }
 
     // 🔐 HASH PASSWORD
@@ -41,8 +33,12 @@ export const register = async (req, res) => {
       firstName,
       lastName,
       email,
-      phone,
+      phone, 
       password: hashedPassword,
+      // 🔥 SECURITY LOGIC: 
+      // Force 'user' role for public registrations. 
+      // Do NOT take the role from req.body directly.
+      role: "user" 
     });
 
     await newUser.save();
@@ -53,9 +49,7 @@ export const register = async (req, res) => {
 
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      message: "Server error",
-    });
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -77,9 +71,14 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    // 🔐 Generate JWT
+    // 🔴 SECURITY CHECK: Prevent banned users from logging in
+    if (user.isBanned) {
+      return res.status(403).json({ message: "Your account has been suspended by an admin." });
+    }
+
+    // 🔐 Generate JWT (Include the ROLE in the payload)
     const token = jwt.sign(
-      { id: user._id },
+      { id: user._id, role: user.role }, // 🔥 Adding role here makes 'isAdmin' middleware work
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
@@ -93,6 +92,7 @@ export const login = async (req, res) => {
         lastName: user.lastName,
         email: user.email,
         phone: user.phone,
+        role: user.role, // 🔥 Send role to frontend for redirection
       },
     });
 
@@ -101,4 +101,3 @@ export const login = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-

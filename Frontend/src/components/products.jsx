@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { FiClock, FiTag, FiArrowRight, FiMapPin, FiPackage } from "react-icons/fi";
+import { FiClock, FiTag, FiArrowRight, FiMapPin, FiPackage, FiTrendingUp } from "react-icons/fi";
 import Navbar from "./Navbar";
 import API from "../services/api";
 import socket from "../services/socket";
@@ -20,11 +20,18 @@ const Products = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [lastUpdatedId, setLastUpdatedId] = useState(null);
+
+  // --- LOGIC: Constant Sorting Priority ---
+  const sortProducts = (data) => {
+    const order = { "Active": 1, "Scheduled": 2, "Sold": 3, "Unsold": 4 };
+    return [...data].sort((a, b) => (order[a.status] || 5) - (order[b.status] || 5));
+  };
 
   const fetchProducts = async () => {
     try {
       const res = await API.get("/products");
-      setProducts(res.data);
+      setProducts(sortProducts(res.data));
       setError("");
     } catch (error) {
       setError(error.response?.data?.message || "Failed to load products");
@@ -35,24 +42,39 @@ const Products = () => {
 
   useEffect(() => {
     fetchProducts();
-  }, []); 
+  }, []);
 
+  // 🔥 LOGIC: REAL-TIME SOCKET ENGINE
   useEffect(() => {
+    const handleRemoteUpdate = (updatedProduct) => {
+      setProducts((prevProducts) => {
+        const updatedList = prevProducts.map((p) => 
+          p._id === updatedProduct._id ? { ...p, ...updatedProduct } : p
+        );
+        return sortProducts(updatedList);
+      });
+
+      setLastUpdatedId(updatedProduct._id);
+      setTimeout(() => setLastUpdatedId(null), 2000);
+    };
+
     socket.on("productCreated", (newProduct) => {
-      setProducts((prev) => [newProduct, ...prev]);
+      setProducts(prev => sortProducts([newProduct, ...prev]));
     });
 
-    socket.on("productUpdated", (updatedProduct) => {
-      setProducts((prev) =>
-        prev.map((p) => (p._id === updatedProduct._id ? updatedProduct : p))
-      );
-    });
+    socket.on("productUpdated", handleRemoteUpdate);
 
     return () => {
       socket.off("productCreated");
-      socket.off("productUpdated");
+      socket.off("productUpdated", handleRemoteUpdate);
     };
   }, []);
+
+  if (loading) return (
+    <div className="min-h-screen bg-slate-50/50 flex items-center justify-center">
+      <div className="text-slate-400 font-black animate-pulse tracking-widest uppercase">Initializing Market...</div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-slate-50/50">
@@ -65,45 +87,50 @@ const Products = () => {
               Live Market
             </h2>
             <p className="text-slate-500 mt-1 uppercase text-[10px] font-bold tracking-widest">
-              Professional Bidding Engine
+              Professional Real-Time Bidding
             </p>
           </div>
           <div className="flex gap-2 text-sm font-medium">
-            <span className="px-4 py-2 bg-white border border-slate-200 rounded-2xl text-slate-600 shadow-sm">
-              {products.length} Items Live
+            <span className="px-4 py-2 bg-white border border-slate-200 rounded-2xl text-slate-600 shadow-sm flex items-center gap-2">
+              <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></span>
+              {products.filter(p => p.status === "Active").length} Live Now
             </span>
           </div>
         </div>
 
-        {/* ... Loading & Error states remain same ... */}
+        {error && (
+          <div className="bg-red-50 text-red-600 p-4 rounded-2xl mb-8 font-bold text-center border border-red-100">
+            {error}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-          <AnimatePresence>
+          <AnimatePresence mode="popLayout">
             {products.map((product) => (
               <motion.div
                 layout
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ 
+                  opacity: 1, 
+                  scale: 1,
+                  borderColor: lastUpdatedId === product._id ? "#2563eb" : "#e2e8f0",
+                  backgroundColor: lastUpdatedId === product._id ? "#f8faff" : "#ffffff"
+                }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.4 }}
                 key={product._id}
-                className={`group relative bg-white rounded-[24px] border border-slate-200 overflow-hidden transition-all hover:shadow-2xl hover:shadow-blue-500/10 ${
-                  ["Sold", "Unsold"].includes(product.status) ? "grayscale-[0.4] opacity-90" : ""
+                className={`group relative rounded-[24px] border-2 overflow-hidden transition-all hover:shadow-2xl hover:shadow-blue-500/10 ${
+                  ["Sold", "Unsold"].includes(product.status) ? "grayscale-[0.3] opacity-90" : ""
                 }`}
               >
                 <Link to={`/products/${product._id}`} className="flex flex-col h-full">
                   
-                  {/* Status Badge - Updated for new Enum */}
+                  {/* Status Badge */}
                   <div className="absolute top-4 left-4 z-10">
                     <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter shadow-md 
                       ${product.status === "Active" ? "bg-green-600 text-white" : 
                         product.status === "Scheduled" ? "bg-blue-600 text-white" : 
                         product.status === "Sold" ? "bg-slate-900 text-white" : "bg-red-500 text-white"}`}>
-                      {product.status === "Active" && (
-                        <span className="flex h-2 w-2 relative">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-                        </span>
-                      )}
                       {product.status}
                     </span>
                   </div>
@@ -113,46 +140,56 @@ const Products = () => {
                     <img
                       src={product.images?.[0] || "https://via.placeholder.com/400"}
                       alt={product.title}
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                     />
                     {product.status === "Sold" && (
                       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] flex items-center justify-center">
-                        <span className="text-white font-black text-2xl tracking-tighter border-4 border-white px-6 py-2 rounded-xl -rotate-12">WON</span>
+                        <span className="text-white font-black text-2xl tracking-tighter border-4 border-white px-6 py-2 rounded-xl -rotate-12">SOLD</span>
                       </div>
                     )}
                   </div>
 
-                  {/* Content */}
+                  {/* Card Content */}
                   <div className="p-6 flex flex-col flex-grow">
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="text-lg font-bold text-slate-800 leading-tight group-hover:text-blue-600 transition-colors line-clamp-1">
-                        {product.title}
-                      </h3>
-                    </div>
+                    <h3 className="text-lg font-bold text-slate-800 leading-tight group-hover:text-blue-600 transition-colors line-clamp-1 mb-2">
+                      {product.title}
+                    </h3>
 
-                    {/* NEW: Brand & Condition Specifics */}
-                    <div className="flex items-center gap-3 mb-4">
-                      <span className="text-[10px] font-bold bg-slate-100 px-2 py-0.5 rounded text-slate-500 uppercase">{product.brand || "Generic"}</span>
-                      <span className="text-[10px] font-bold bg-blue-50 px-2 py-0.5 rounded text-blue-600 uppercase">{product.condition}</span>
+                    <div className="flex items-center gap-2 mb-4">
+                      <span className="text-[9px] font-black bg-slate-100 px-2 py-0.5 rounded text-slate-500 uppercase tracking-widest">{product.brand || "Generic"}</span>
+                      <span className="text-[9px] font-black bg-blue-50 px-2 py-0.5 rounded text-blue-600 uppercase tracking-widest">{product.condition}</span>
                     </div>
                     
-                    {/* NEW: Location Tag */}
-                    <div className="flex items-center gap-1.5 mb-4 text-[11px] text-slate-400 font-medium">
+                    <div className="flex items-center gap-1.5 mb-4 text-[10px] text-slate-400 font-bold uppercase tracking-tight">
                       <FiMapPin className="text-blue-500" />
-                      <span>{product.sellerAddress?.city || "Remote Location"}</span>
+                      <span>{product.sellerAddress?.city || "Remote"}</span>
+                      <span className="ml-auto flex items-center gap-1"><FiTrendingUp /> {product.bidsCount || 0} Bids</span>
                     </div>
 
+                    {/* 🔥 UPDATED PRICING LOGIC */}
                     <div className="mt-auto pt-5 border-t border-slate-50 flex items-center justify-between">
-                      <div>
+                      <div className="flex flex-col">
+                        {/* Show small "Start" label if there are bids */}
+                        {product.bidsCount > 0 && product.status !== "Unsold" && (
+                          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tight line-through mb-0.5">
+                            Start: ₹{product.startingPrice.toLocaleString()}
+                          </p>
+                        )}
+
                         <p className="text-[9px] uppercase font-black text-slate-400 tracking-tighter">
-                          {product.status === "Active" ? "Current High Bid" : "Starting At"}
+                          {product.status === "Active" ? "Current Bid" : 
+                           product.status === "Unsold" ? "Final (Starting)" : "Starting Price"}
                         </p>
-                        <p className="text-2xl font-black text-slate-900 tracking-tighter">
-                          ₹{(product.currentBid || product.startingPrice).toLocaleString()}
+                        
+                        <p className={`text-2xl font-black transition-colors ${lastUpdatedId === product._id ? 'text-blue-600' : 'text-slate-900'}`}>
+                          ₹{(product.status === "Unsold" || product.bidsCount === 0 
+                              ? product.startingPrice 
+                              : product.currentBid
+                            ).toLocaleString()}
                         </p>
                       </div>
 
-                      <div className="flex flex-col items-end">
+                      <div className="flex flex-col items-end text-right">
                          <p className="text-[9px] uppercase font-black text-slate-400 tracking-tighter mb-1">
                             {product.status === "Scheduled" ? "Starts" : "Ends"}
                          </p>

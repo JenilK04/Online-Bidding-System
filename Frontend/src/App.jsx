@@ -6,6 +6,8 @@ import Login from "./components/login";
 import MyProducts from "./components/myProducts";
 import ViewBid from "./components/viewBid";
 import MyProfile from "./components/myProfile";
+import AdminDashboard from "./components/Admin/adminDashboard";
+import Checkout from "./components/checkout";
 
 import ProtectedRoute from "./routes/protectedroutes";  
 import ProductDetails from "./components/productDetails";
@@ -60,7 +62,19 @@ function App() {
             // </ProtectedRoute>
           }
         />
+
+        <Route
+            path="/checkout/:id"
+            element={
+              // <ProtectedRoute>
+              <Checkout />
+              // </ProtectedRoute>
+            }
+            />
+
+        <Route path="/admin/dashboard" element={<AdminDashboard />} />
       </Routes>
+
     </BrowserRouter>
   );
 }
