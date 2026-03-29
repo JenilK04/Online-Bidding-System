@@ -32,17 +32,14 @@ const MyProducts = () => {
 
   useEffect(() => { fetchMyProducts(); }, []);
 
-  // 🔥 REAL-TIME ENGINE
   useEffect(() => {
     const handleUpdate = (updatedProduct) => {
       setProducts((prev) =>
         prev.map((p) => (p._id === updatedProduct._id ? { ...p, ...updatedProduct } : p))
       );
     };
-
     socket.on("productUpdated", handleUpdate);
     socket.on("productCreated", (newP) => setProducts(prev => [newP, ...prev]));
-
     return () => {
       socket.off("productUpdated");
       socket.off("productCreated");
@@ -52,12 +49,9 @@ const MyProducts = () => {
   const confirmCloseBid = async () => {
     try {
       const res = await API.patch(`/products/close/${selectedProductId}`);
-      
-      // 🔥 LOGIC: Update local state immediately so no refresh is needed
       setProducts((prev) =>
         prev.map((p) => (p._id === selectedProductId ? { ...p, ...res.data } : p))
       );
-      
       setShowCloseModal(false);
     } catch (err) {
       alert("Failed to close auction.");
@@ -81,7 +75,7 @@ const MyProducts = () => {
             <h1 className="text-4xl font-black text-slate-900 tracking-tight">Seller Hub</h1>
             <p className="text-slate-500 font-medium">Manage logistics and finalize sales.</p>
           </div>
-          <button onClick={() => setOpen(true)} className="flex items-center gap-2 bg-blue-600 text-white px-8 py-4 rounded-[20px] font-black uppercase text-xs shadow-xl">
+          <button onClick={() => setOpen(true)} className="flex items-center gap-2 bg-blue-600 text-white px-8 py-4 rounded-[20px] font-black uppercase text-xs shadow-xl hover:bg-blue-700 transition-colors">
             <FiPlus size={18} /> <span>New Listing</span>
           </button>
         </div>
@@ -105,32 +99,64 @@ const MyProducts = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           <AnimatePresence>
             {products.map((p) => (
-              <motion.div layout key={p._id} className={`bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm ${p.status === "Sold" ? "ring-2 ring-green-500/20" : ""}`}>
-                <div className="aspect-video relative">
-                  <img src={p.images?.[0]} className="w-full h-full object-cover" alt="" />
-                  <span className={`absolute top-4 left-4 px-3 py-1 rounded-full text-[10px] font-black uppercase text-white shadow-md ${p.status === 'Active' ? 'bg-green-500' : p.status === 'Sold' ? 'bg-slate-900' : 'bg-blue-500'}`}>
+              <motion.div 
+                layout 
+                key={p._id}
+                whileHover={{ y: -8, transition: { duration: 0.2 } }}
+                onClick={() => navigate(`/my-product/${p._id}`)}
+                className={`group cursor-pointer bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-sm hover:shadow-2xl hover:shadow-blue-500/10 hover:border-blue-200 transition-all duration-300 relative ${p.status === "Sold" ? "ring-2 ring-green-500/10" : ""}`}
+              >
+                {/* IMAGE CONTAINER */}
+                <div className="aspect-[16/10] relative overflow-hidden">
+                  <motion.img 
+                    src={p.images?.[0]} 
+                    className="w-full h-full object-cover" 
+                    alt="" 
+                    whileHover={{ scale: 1.05 }}
+                    transition={{ duration: 0.6 }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  
+                  <span className={`absolute top-5 left-5 px-4 py-1.5 rounded-full text-[10px] font-black uppercase text-white shadow-lg backdrop-blur-md ${p.status === 'Active' ? 'bg-green-500/90' : p.status === 'Sold' ? 'bg-slate-900/90' : 'bg-blue-500/90'}`}>
                     {p.status}
                   </span>
                 </div>
-                <div className="p-6">
-                  <h2 className="text-xl font-black text-slate-900 truncate mb-4">{p.title}</h2>
-                  <div className="grid grid-cols-2 gap-3 mb-6">
-                    <div className="p-3 bg-slate-50 rounded-2xl">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Current Bid</p>
-                      <p className="font-black text-blue-600">₹{(p.currentBid || p.startingPrice).toLocaleString()}</p>
+
+                {/* CONTENT */}
+                <div className="p-8">
+                  <h2 className="text-2xl font-black text-slate-900 truncate mb-5 group-hover:text-blue-600 transition-colors">{p.title}</h2>
+                  
+                  <div className="grid grid-cols-2 gap-4 mb-8">
+                    <div className="p-4 bg-slate-50 rounded-[24px] group-hover:bg-blue-50/50 transition-colors">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Current Bid</p>
+                      <p className="text-lg font-black text-blue-600">₹{(p.currentBid || p.startingPrice).toLocaleString()}</p>
                     </div>
-                    <div className="p-3 bg-slate-50 rounded-2xl">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Bidders</p>
-                      <p className="font-black text-slate-700">{p.registeredUsers?.length || 0}</p>
+                    <div className="p-4 bg-slate-50 rounded-[24px] group-hover:bg-slate-100 transition-colors">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Bidders</p>
+                      <p className="text-lg font-black text-slate-700">{p.registeredUsers?.length || 0}</p>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-2">
-                    <button onClick={() => navigate(`/my-product/${p._id}`)} className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest">
-                      <FiActivity /> Console
-                    </button>
+
+                  {/* BUTTON-TYPE FOOTER */}
+                  <div className="flex items-center justify-between gap-4 mt-2">
+                    <div className="flex-grow group-hover:translate-x-1 transition-transform duration-300">
+                      <div className="inline-flex items-center gap-2 bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-slate-200 group-hover:bg-blue-600 group-hover:shadow-blue-100 transition-all">
+                        <FiActivity size={14} className="group-hover:animate-pulse" />
+                        View Console
+                      </div>
+                    </div>
+                    
                     {(p.status === "Active" || p.status === "Scheduled") && (
-                      <button onClick={() => { setSelectedProductId(p._id); setShowCloseModal(true); }} className="w-full flex items-center justify-center gap-2 border-2 border-slate-100 text-slate-400 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:text-red-500">
-                        <FiXCircle /> End Auction
+                      <button 
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          setSelectedProductId(p._id); 
+                          setShowCloseModal(true); 
+                        }} 
+                        className="p-3.5 bg-slate-50 text-slate-400 rounded-2xl hover:bg-red-50 hover:text-red-500 transition-all border border-transparent hover:border-red-100"
+                        title="End Auction"
+                      >
+                        <FiXCircle size={20} />
                       </button>
                     )}
                   </div>
@@ -145,12 +171,12 @@ const MyProducts = () => {
       <AnimatePresence>
         {showCloseModal && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
-            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white w-full max-w-sm rounded-[40px] p-10 text-center shadow-2xl">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="bg-white w-full max-w-sm rounded-[40px] p-10 text-center shadow-2xl">
               <div className="w-20 h-20 bg-red-50 text-red-600 rounded-3xl flex items-center justify-center mx-auto mb-6"><FiTrash2 size={40} /></div>
               <h2 className="text-2xl font-black text-slate-900 mb-2">Close Auction?</h2>
               <p className="text-slate-500 text-sm mb-8">This will instantly select the highest bidder as the winner.</p>
               <div className="flex flex-col gap-3">
-                <button onClick={confirmCloseBid} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black uppercase text-xs">Confirm & Close</button>
+                <button onClick={confirmCloseBid} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black uppercase text-xs shadow-lg shadow-red-200">Confirm & Close</button>
                 <button onClick={() => setShowCloseModal(false)} className="w-full py-2 text-slate-400 font-bold text-xs uppercase">Cancel</button>
               </div>
             </motion.div>

@@ -8,7 +8,9 @@ import ViewBid from "./components/viewBid";
 import MyProfile from "./components/myProfile";
 import AdminDashboard from "./components/Admin/adminDashboard";
 import Checkout from "./components/checkout";
-
+import AdminUsers from "./components/Admin/Adminusers";
+import AdminEvents from "./components/Admin/adminEvents";
+import AdminFinance from "./components/Admin/adminFinaces"; 
 import ProtectedRoute from "./routes/protectedroutes";  
 import ProductDetails from "./components/productDetails";
 
@@ -73,6 +75,9 @@ function App() {
             />
 
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
+        <Route path="/admin/users" element={<AdminUsers />} />
+        <Route path="/admin/events" element={<AdminEvents />} />
+        <Route path="/admin/finance" element={<AdminFinance />} />
       </Routes>
 
     </BrowserRouter>

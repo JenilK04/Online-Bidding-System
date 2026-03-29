@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import API from "../services/api";
 import { 
   FiBox, FiCamera, FiClock, FiShield, 
-  FiTruck, FiInfo, FiTag, FiX, FiSettings, FiMapPin 
+  FiTruck, FiInfo, FiTag, FiX, FiSettings, FiMapPin, FiTrash2 // 👈 Added FiTrash2
 } from "react-icons/fi";
 
 const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
@@ -16,9 +16,8 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
     startingPrice: "", bidIncrement: 10, maxRegistrations: 100,
     startTime: "", endTime: "",
     antiSnipeWindow: 60, 
-    extensionDuration: 120, // 👈 Added this
+    extensionDuration: 120, 
     
-    // 📍 NEW: Seller Pickup Address
     sellerAddress: {
       street: "",
       city: "",
@@ -34,10 +33,15 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
     },
     shippingWeight: "",
     dimensions: { length: "", width: "", height: "" },
-    status: "Scheduled" // 👈 Changed default to Scheduled for pro listing
+    status: "Scheduled" 
   });
 
   if (!isOpen) return null;
+
+  // 🔥 ADDED: Remove Image Logic
+  const removeImage = (indexToRemove) => {
+    setImages(prev => prev.filter((_, index) => index !== indexToRemove));
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -63,13 +67,14 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
       });
     });
     Promise.all(readers).then(results => setImages(prev => [...prev, ...results].slice(0, 12)));
+    // 📍 Reset the input value so the same image can be re-selected if removed
+    e.target.value = "";
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      // images are sent as base64 array to match controller
       await API.post("/products", { ...form, images }); 
       onSuccess();
       onClose();
@@ -135,10 +140,22 @@ const AddProductModal = ({ isOpen, onClose, onSuccess }) => {
             <div className="space-y-4">
               <label className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><FiCamera /> Photos (Max 12)</label>
               <div className="flex flex-wrap gap-4">
-                {images.map((img, i) => <img key={i} src={img} className="w-20 h-20 object-cover rounded-xl border" alt="" />)}
+                {/* 🔥 UPDATED: Image list now includes a remove button overlay */}
+                {images.map((img, i) => (
+                  <div key={i} className="relative group">
+                    <img src={img} className="w-20 h-20 object-cover rounded-xl border" alt="" />
+                    <button 
+                      type="button" 
+                      onClick={() => removeImage(i)}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                    >
+                      <FiTrash2 size={12} />
+                    </button>
+                  </div>
+                ))}
                 <label className="w-20 h-20 border-2 border-dashed rounded-xl flex items-center justify-center cursor-pointer hover:bg-slate-50">
                   <span className="text-2xl text-slate-300">+</span>
-                  <input type="file" multiple className="hidden" onChange={handleImageChange} />
+                  <input type="file" multiple className="hidden" onChange={handleImageChange} accept="image/*" />
                 </label>
               </div>
             </div>

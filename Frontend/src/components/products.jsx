@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { FiClock, FiTag, FiArrowRight, FiMapPin, FiPackage, FiTrendingUp } from "react-icons/fi";
+import { FiClock, FiTag, FiArrowRight, FiMapPin, FiPackage, FiTrendingUp, FiSearch, FiFilter, FiCheckCircle } from "react-icons/fi";
 import Navbar from "./Navbar";
 import API from "../services/api";
 import socket from "../services/socket";
@@ -21,11 +21,23 @@ const Products = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [lastUpdatedId, setLastUpdatedId] = useState(null);
+  
+  // --- NEW STATE: SEARCH & FILTER ---
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState("All");
 
-  // --- LOGIC: Constant Sorting Priority ---
+  // --- LOGIC: Enhanced Sorting Priority (Registered First) ---
   const sortProducts = (data) => {
-    const order = { "Active": 1, "Scheduled": 2, "Sold": 3, "Unsold": 4 };
-    return [...data].sort((a, b) => (order[a.status] || 5) - (order[b.status] || 5));
+    const statusOrder = { "Active": 1, "Scheduled": 2, "Sold": 3, "Unsold": 4 };
+    
+    return [...data].sort((a, b) => {
+      // 1. Registered Priority (assuming product.isRegistered is a boolean)
+      if (a.isRegistered && !b.isRegistered) return -1;
+      if (!a.isRegistered && b.isRegistered) return 1;
+      
+      // 2. Status Priority
+      return (statusOrder[a.status] || 5) - (statusOrder[b.status] || 5);
+    });
   };
 
   const fetchProducts = async () => {
@@ -44,7 +56,6 @@ const Products = () => {
     fetchProducts();
   }, []);
 
-  // 🔥 LOGIC: REAL-TIME SOCKET ENGINE
   useEffect(() => {
     const handleRemoteUpdate = (updatedProduct) => {
       setProducts((prevProducts) => {
@@ -70,6 +81,14 @@ const Products = () => {
     };
   }, []);
 
+  // --- LOGIC: Compute Filtered List ---
+  const filteredProducts = products.filter(p => {
+    const matchesSearch = p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          p.brand?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesFilter = filterStatus === "All" || p.status === filterStatus;
+    return matchesSearch && matchesFilter;
+  });
+
   if (loading) return (
     <div className="min-h-screen bg-slate-50/50 flex items-center justify-center">
       <div className="text-slate-400 font-black animate-pulse tracking-widest uppercase">Initializing Market...</div>
@@ -81,7 +100,9 @@ const Products = () => {
       <Navbar />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
+        
+        {/* Header Section */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-10 gap-6">
           <div>
             <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
               Live Market
@@ -90,11 +111,39 @@ const Products = () => {
               Professional Real-Time Bidding
             </p>
           </div>
-          <div className="flex gap-2 text-sm font-medium">
-            <span className="px-4 py-2 bg-white border border-slate-200 rounded-2xl text-slate-600 shadow-sm flex items-center gap-2">
+
+          {/* --- SEARCH & FILTER UI --- */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative group">
+              <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+              <input 
+                type="text" 
+                placeholder="Search by title or brand..."
+                className="pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none w-full sm:w-64 transition-all shadow-sm"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            
+            <div className="relative">
+              <FiFilter className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <select 
+                className="pl-11 pr-8 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none appearance-none cursor-pointer shadow-sm text-slate-600 font-medium"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <option value="All">All Status</option>
+                <option value="Active">Active</option>
+                <option value="Scheduled">Scheduled</option>
+                <option value="Sold">Sold</option>
+                <option value="Unsold">Unsold</option>
+              </select>
+            </div>
+
+            <div className="hidden sm:flex items-center px-4 py-2 bg-white border border-slate-200 rounded-2xl text-slate-600 shadow-sm gap-2">
               <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></span>
-              {products.filter(p => p.status === "Active").length} Live Now
-            </span>
+              <span className="text-sm font-medium">{products.filter(p => p.status === "Active").length} Live</span>
+            </div>
           </div>
         </div>
 
@@ -106,7 +155,7 @@ const Products = () => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
           <AnimatePresence mode="popLayout">
-            {products.map((product) => (
+            {filteredProducts.map((product) => (
               <motion.div
                 layout
                 initial={{ opacity: 0, scale: 0.9 }}
@@ -125,8 +174,13 @@ const Products = () => {
               >
                 <Link to={`/products/${product._id}`} className="flex flex-col h-full">
                   
-                  {/* Status Badge */}
-                  <div className="absolute top-4 left-4 z-10">
+                  {/* Status & Registered Badge */}
+                  <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
+                    {product.isRegistered && (
+                      <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter shadow-md bg-blue-100 text-blue-700 border border-blue-200">
+                        <FiCheckCircle /> Registered
+                      </span>
+                    )}
                     <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter shadow-md 
                       ${product.status === "Active" ? "bg-green-600 text-white" : 
                         product.status === "Scheduled" ? "bg-blue-600 text-white" : 
@@ -166,21 +220,18 @@ const Products = () => {
                       <span className="ml-auto flex items-center gap-1"><FiTrendingUp /> {product.bidsCount || 0} Bids</span>
                     </div>
 
-                    {/* 🔥 UPDATED PRICING LOGIC */}
+                    {/* Pricing Logic */}
                     <div className="mt-auto pt-5 border-t border-slate-50 flex items-center justify-between">
                       <div className="flex flex-col">
-                        {/* Show small "Start" label if there are bids */}
                         {product.bidsCount > 0 && product.status !== "Unsold" && (
                           <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tight line-through mb-0.5">
                             Start: ₹{product.startingPrice.toLocaleString()}
                           </p>
                         )}
-
                         <p className="text-[9px] uppercase font-black text-slate-400 tracking-tighter">
                           {product.status === "Active" ? "Current Bid" : 
                            product.status === "Unsold" ? "Final (Starting)" : "Starting Price"}
                         </p>
-                        
                         <p className={`text-2xl font-black transition-colors ${lastUpdatedId === product._id ? 'text-blue-600' : 'text-slate-900'}`}>
                           ₹{(product.status === "Unsold" || product.bidsCount === 0 
                               ? product.startingPrice 
