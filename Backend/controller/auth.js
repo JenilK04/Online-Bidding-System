@@ -8,7 +8,7 @@ const router = express.Router();
 /* REGISTER */
 export const register = async (req, res) => {
   try {
-    const { firstName, lastName, email, password, confirmPassword, phone, role } = req.body;
+    const { firstName, lastName, email, password, confirmPassword, phone, personalId } = req.body;
 
     // 🔴 VALIDATIONS (Keep your existing checks...)
     if (!firstName || !lastName || !email || !password || !confirmPassword) {
@@ -34,6 +34,7 @@ export const register = async (req, res) => {
       lastName,
       email,
       phone, 
+      personalId,
       password: hashedPassword,
       // 🔥 SECURITY LOGIC: 
       // Force 'user' role for public registrations. 

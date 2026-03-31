@@ -1,5 +1,6 @@
 import User from "../models/user.js";
 import Product from "../models/products.js";
+import Order from "../models/order.js";
 
 /**
  * 📊 GET ADMIN STATS
@@ -84,22 +85,61 @@ export const getAdminEvents = async (req, res) => {
   }
 };
 
-// controllers/adminController.js
 export const getFinanceStats = async (req, res) => {
   try {
-    const completedSales = await Product.find({ isPaid: true, status: "Ended" });
-    
-    const totalSalesVolume = completedSales.reduce((sum, p) => sum + p.currentBid, 0);
-    const platformCommission = totalSalesVolume * 0.05; // Assuming 5% fee
-    const pendingPayouts = await Product.countDocuments({ isPaid: true, deliveryStatus: { $ne: "Delivered" } });
+    // 1. Aggregate Financial Totals
+    const financeSummary = await Order.aggregate([
+      { 
+        $match: { paymentStatus: "Paid" } // Only count actual money received
+      },
+      {
+        $group: {
+          _id: null,
+          totalSalesVolume: { $sum: "$hammerPrice" }, // Gross amount
+          platformCommission: { $sum: "$platformFee" }, // Your 5% cut
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const stats = financeSummary[0] || { totalSalesVolume: 0, platformCommission: 0 };
+
+    // 2. Count Pending Payouts
+    // Orders paid by buyer but not yet marked as 'Delivered' (or your internal payout trigger)
+    const pendingPayouts = await Order.countDocuments({ 
+      paymentStatus: "Paid", 
+      deliveryStatus: { $ne: "Delivered" } 
+    });
+
+    // 3. Fetch Recent Transactions
+    // We populate 'product' to get the title and 'buyer' for the identity
+    const transactions = await Order.find()
+      .sort({ createdAt: -1 })
+      .limit(15)
+      .populate("product", "title")
+      .populate("buyer", "firstName name email");
+
+    // Format for Frontend (Matching your React AdminFinance component)
+    const formattedTransactions = transactions.map(order => ({
+      _id: order._id,
+      title: order.product?.title || "Deleted Asset",
+      currentBid: order.hammerPrice,
+      platformFee: order.platformFee,
+      status: order.paymentStatus,
+      buyer: order.buyer?.firstName || order.buyer?.name || "Anonymous",
+      date: order.createdAt
+    }));
 
     res.status(200).json({
-      totalSalesVolume,
-      platformCommission,
+      totalSalesVolume: stats.totalSalesVolume,
+      platformCommission: stats.platformCommission,
       pendingPayouts,
-      transactions: completedSales // Send list for the table
+      transactions: formattedTransactions
     });
   } catch (error) {
-    res.status(500).json({ message: "Finance Audit Failed" });
+    res.status(500).json({ 
+      message: "Finance Ledger Sync Failed", 
+      error: error.message 
+    });
   }
 };

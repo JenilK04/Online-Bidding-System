@@ -19,6 +19,12 @@ const formatTime = (date) =>
     hour12: true,
   });
 
+const getEmailPrefix = (bid) => {
+  const email = bid.bidderId?.email || bid.email;
+  if (email) return email.split('@')[0];
+  return bid.bidderName || "User_Node";
+};
+
 const MyProductDetails = () => {
   const { id } = useParams();
   const [product, setProduct] = useState(null);
@@ -34,8 +40,8 @@ const MyProductDetails = () => {
         API.get(`/bids/${id}`)
       ]);
       setProduct(prodRes.data);
-      // Sort bids by newest first
-      const sortedBids = bidsRes.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      const bidList = Array.isArray(bidsRes.data) ? bidsRes.data : [];
+      const sortedBids = bidList.sort((a, b) => new Date(b.bidTime || b.createdAt) - new Date(a.bidTime || a.createdAt));
       setBids(sortedBids);
     } catch (err) {
       setError("Failed to sync product data.");
@@ -47,31 +53,49 @@ const MyProductDetails = () => {
   useEffect(() => {
     fetchData();
 
-    // Join room for this specific product
     socket.emit("joinProduct", id);
 
-    // Listen for real-time product changes (Status, Current Bid, etc.)
-    socket.on("productUpdated", (updatedProduct) => {
+    // 🔥 REAL-TIME STATUS & DATA LISTENER
+    const handleUpdate = (updatedProduct) => {
       if (updatedProduct._id === id) {
-        setProduct(updatedProduct);
+        // We use functional update to merge status and current bid instantly
+        setProduct((prev) => ({ ...prev, ...updatedProduct }));
       }
-    });
+    };
 
-    // Listen for new bids
-    socket.on("bidPlaced", (newBid) => {
+    const handleNewBid = (newBid) => {
       setBids((prev) => {
-        // Prevent duplicate bids if socket fires twice
         if (prev.find(b => b._id === newBid._id)) return prev;
         return [newBid, ...prev];
       });
-    });
+    };
+
+    socket.on("productUpdated", handleUpdate);
+    socket.on("bidPlaced", handleNewBid);
 
     return () => {
       socket.emit("leaveProduct", id);
-      socket.off("productUpdated");
-      socket.off("bidPlaced");
+      socket.off("productUpdated", handleUpdate);
+      socket.off("bidPlaced", handleNewBid);
     };
   }, [id]);
+
+  // 🔥 AUTO-FINALIZE CHECKER
+  // If the timer runs out while the user is watching, this triggers the status flip
+  useEffect(() => {
+    if (!product || product.status !== "Active") return;
+
+    const checkStatus = setInterval(() => {
+      const now = new Date();
+      const end = new Date(product.endTime);
+      if (now >= end) {
+        fetchData(); // Force refresh to trigger the "Sold/Unsold" transition
+        clearInterval(checkStatus);
+      }
+    }, 1000);
+
+    return () => clearInterval(checkStatus);
+  }, [product]);
 
   if (loading) return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -97,9 +121,8 @@ const MyProductDetails = () => {
       <Navbar />
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Navigation */}
         <div className="mb-8 flex justify-between items-center">
-          <Link to="/my-products" className="flex items-center gap-2 text-slate-500 hover:text-blue-600 transition font-black text-[10px] uppercase tracking-[0.2em]">
+          <Link to="/my-products" className="flex items-center gap-2 text-slate-400 hover:text-blue-600 transition font-black text-[10px] uppercase tracking-[0.2em]">
             <FiArrowLeft size={16}/> Back to Seller Hub
           </Link>
           <div className="bg-white border border-slate-200 px-4 py-2 rounded-2xl text-[10px] font-black uppercase text-slate-400">
@@ -109,16 +132,16 @@ const MyProductDetails = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* LEFT: Product Summary */}
           <div className="lg:col-span-4 space-y-6">
             <div className="bg-white rounded-[32px] p-6 border border-slate-200 shadow-sm sticky top-24">
               <div className="aspect-square bg-slate-50 rounded-2xl overflow-hidden mb-6 border border-slate-100">
-                <img src={product.images[0]} className="w-full h-full object-cover" alt="product" />
+                <img src={product.images[0]} className="w-full h-full object-contain mix-blend-multiply" alt="product" />
               </div>
               
               <div className="flex items-center gap-2 mb-3">
                 <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
-                  product.status === "Active" ? "bg-green-500 text-white" : "bg-slate-900 text-white"
+                  product.status === "Active" ? "bg-green-500 text-white" : 
+                  product.status === "Sold" ? "bg-slate-900 text-white" : "bg-blue-500 text-white"
                 }`}>
                   {product.status}
                 </span>
@@ -128,7 +151,7 @@ const MyProductDetails = () => {
               </div>
 
               <h1 className="text-2xl font-black text-slate-900 leading-tight mb-4">{product.title}</h1>
-              <p className="text-slate-500 text-sm leading-relaxed mb-8">{product.description}</p>
+              <p className="text-slate-500 text-sm leading-relaxed mb-8 line-clamp-3">{product.description}</p>
               
               <div className="space-y-4 pt-6 border-t border-slate-100">
                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -137,22 +160,21 @@ const MyProductDetails = () => {
                 <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
                   {product.registeredUsers?.map((u, i) => (
                     <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <span className="text-xs font-bold text-slate-700">{u.bidderName}</span>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-slate-700">
+                           {u.userId?.firstName ? `${u.userId.firstName} ${u.userId.lastName}` : u.bidderName}
+                        </span>
+                        <span className="text-[8px] font-black text-indigo-500 uppercase tracking-tighter">Verified Identity</span>
+                      </div>
                       <span className="text-[10px] font-black text-slate-400">#{u.bidderNumber}</span>
                     </div>
                   ))}
-                  {product.registeredUsers?.length === 0 && (
-                    <p className="text-xs text-slate-400 italic py-4">No bidders registered yet.</p>
-                  )}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* RIGHT: Live Data & History */}
           <div className="lg:col-span-8 space-y-8">
-            
-            {/* Real-time Dashboard Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm flex flex-col justify-between">
                 <FiTrendingUp className="text-blue-600 mb-4" size={24}/>
@@ -166,7 +188,7 @@ const MyProductDetails = () => {
                 <FiActivity className="text-purple-600 mb-4" size={24}/>
                 <div>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Bid Count</p>
-                  <p className="text-3xl font-black text-slate-900">{product.bidsCount || 0}</p>
+                  <p className="text-3xl font-black text-slate-900">{product.bidsCount || bids.length}</p>
                 </div>
               </div>
 
@@ -181,7 +203,6 @@ const MyProductDetails = () => {
               </div>
             </div>
 
-            {/* Bid History Ledger */}
             <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                 <div>
@@ -202,7 +223,7 @@ const MyProductDetails = () => {
                   <thead>
                     <tr className="bg-slate-50/50">
                       <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Sequence</th>
-                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Bidder Alias</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Bidder Node</th>
                       <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Bid Amount</th>
                       <th className="px-8 py-5 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Timestamp</th>
                     </tr>
@@ -223,14 +244,25 @@ const MyProductDetails = () => {
                               {bids.length - index}
                             </span>
                           </td>
-                          <td className="px-8 py-5 font-bold text-slate-700">{bid.bidderName || "Anonymous"}</td>
+                          <td className="px-8 py-5">
+                            <div className="flex flex-col">
+                              <span className="text-sm font-black tracking-tight text-slate-800">
+                                {getEmailPrefix(bid)}
+                              </span>
+                              <span className="text-[8px] font-bold text-blue-500 uppercase tracking-widest">
+                                Verified Paddle
+                              </span>
+                            </div>
+                          </td>
                           <td className="px-8 py-5">
                             <div className="flex flex-col">
                                 <span className="text-green-600 font-black text-lg tracking-tight">₹{bid.amount.toLocaleString()}</span>
                                 {index === 0 && <span className="text-[9px] font-black text-blue-500 uppercase">Leader</span>}
                             </div>
                           </td>
-                          <td className="px-8 py-5 text-right text-[11px] font-bold text-slate-400">{formatTime(bid.createdAt)}</td>
+                          <td className="px-8 py-5 text-right text-[11px] font-bold text-slate-400">
+                            {formatTime(bid.bidTime || bid.createdAt)}
+                          </td>
                         </motion.tr>
                       ))}
                     </AnimatePresence>

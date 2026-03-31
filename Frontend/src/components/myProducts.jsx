@@ -30,25 +30,38 @@ const MyProducts = () => {
     }
   };
 
-  useEffect(() => { fetchMyProducts(); }, []);
+  useEffect(() => { 
+    fetchMyProducts(); 
 
-  useEffect(() => {
+    // 🔥 REAL-TIME STATUS ENGINE: 
+    // This listener handles status transitions (Scheduled -> Active -> Sold) 
+    // and bid updates emitted from the backend calculateStatus and placeBid functions.
     const handleUpdate = (updatedProduct) => {
       setProducts((prev) =>
         prev.map((p) => (p._id === updatedProduct._id ? { ...p, ...updatedProduct } : p))
       );
     };
-    socket.on("productUpdated", handleUpdate);
-    socket.on("productCreated", (newP) => setProducts(prev => [newP, ...prev]));
-    return () => {
-      socket.off("productUpdated");
-      socket.off("productCreated");
+
+    const handleNewProduct = (newP) => {
+      setProducts((prev) => {
+        if (prev.find(p => p._id === newP._id)) return prev;
+        return [newP, ...prev];
+      });
     };
-  }, []);
+
+    socket.on("productUpdated", handleUpdate);
+    socket.on("productCreated", handleNewProduct);
+
+    return () => {
+      socket.off("productUpdated", handleUpdate);
+      socket.off("productCreated", handleNewProduct);
+    };
+  }, []); 
 
   const confirmCloseBid = async () => {
     try {
       const res = await API.patch(`/products/close/${selectedProductId}`);
+      // Manually update local state for immediate feedback
       setProducts((prev) =>
         prev.map((p) => (p._id === selectedProductId ? { ...p, ...res.data } : p))
       );
@@ -58,6 +71,7 @@ const MyProducts = () => {
     }
   };
 
+  // Stats are automatically recalculated whenever the 'products' state changes via Socket
   const activeCount = products.filter(p => p.status === 'Active').length;
   const soldCount = products.filter(p => p.status === 'Sold').length;
   const totalRevenue = products
@@ -88,7 +102,7 @@ const MyProducts = () => {
             { label: "Revenue", val: `₹${totalRevenue.toLocaleString()}`, icon: <FiDollarSign />, color: "bg-emerald-50 text-emerald-600" },
             { label: "Total", val: products.length, icon: <FiPackage />, color: "bg-blue-50 text-blue-600" },
           ].map((stat, i) => (
-            <div key={i} className="bg-white p-6 rounded-[32px] border border-slate-100 flex items-center gap-4">
+            <div key={i} className="bg-white p-6 rounded-[32px] border border-slate-100 flex items-center gap-4 shadow-sm">
               <div className={`w-12 h-12 ${stat.color} rounded-2xl flex items-center justify-center text-xl`}>{stat.icon}</div>
               <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{stat.label}</p><p className="text-xl font-black text-slate-900">{stat.val}</p></div>
             </div>
@@ -97,10 +111,13 @@ const MyProducts = () => {
 
         {/* PRODUCT GRID */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          <AnimatePresence>
+          <AnimatePresence mode="popLayout">
             {products.map((p) => (
               <motion.div 
                 layout 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9 }}
                 key={p._id}
                 whileHover={{ y: -8, transition: { duration: 0.2 } }}
                 onClick={() => navigate(`/my-product/${p._id}`)}
@@ -137,7 +154,7 @@ const MyProducts = () => {
                     </div>
                   </div>
 
-                  {/* BUTTON-TYPE FOOTER */}
+                  {/* FOOTER */}
                   <div className="flex items-center justify-between gap-4 mt-2">
                     <div className="flex-grow group-hover:translate-x-1 transition-transform duration-300">
                       <div className="inline-flex items-center gap-2 bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-slate-200 group-hover:bg-blue-600 group-hover:shadow-blue-100 transition-all">

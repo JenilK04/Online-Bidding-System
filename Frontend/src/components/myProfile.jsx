@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  FiPackage, FiTruck, FiCheckCircle, FiPhone,FiCreditCard, 
+  FiPackage, FiTruck, FiCheckCircle, FiPhone, FiCreditCard, 
   FiClock, FiArrowRight, FiMapPin, FiFileText, FiHash, FiActivity, FiTag, FiSend
 } from "react-icons/fi";
 import Navbar from "./Navbar";
@@ -19,6 +19,9 @@ const Profile = () => {
   const [trackingData, setTrackingData] = useState({});
   const [isShipping, setIsShipping] = useState(false);
 
+  // --- PAYMENT TIMEOUT CONFIG (24 Hours) ---
+  const PAYMENT_WINDOW = 24 * 60 * 60 * 1000;
+
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
@@ -30,7 +33,6 @@ const Profile = () => {
     } catch (err) { console.error("Profile Sync Error:", err); }
   };
 
-  // --- NEW HANDLER FOR SHIPPING ---
   const handleShipAction = async (productId) => {
     const trackNum = trackingData[productId];
     if (!trackNum) return alert("Please enter a tracking number");
@@ -39,12 +41,83 @@ const Profile = () => {
     try {
       await API.patch(`/orders/ship/${productId}`, { trackingNumber: trackNum });
       alert("Shipment Confirmed!");
-      fetchData(); // Refresh UI to update status to "Shipped"
+      fetchData(); 
     } catch (err) {
       alert("Failed to update shipping status.");
     } finally {
       setIsShipping(false);
     }
+  };
+
+  const handlePrintInvoice = (item) => {
+    const printWindow = window.open("", "_blank");
+    const invoiceHTML = `
+      <html>
+        <head>
+          <title>Invoice - ${item.title}</title>
+          <style>
+            body { font-family: sans-serif; color: #1e293b; padding: 40px; line-height: 1.6; }
+            .header { display: flex; justify-content: space-between; border-bottom: 2px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 30px; }
+            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-bottom: 40px; }
+            .label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 4px; }
+            .value { font-size: 14px; font-weight: 600; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { text-align: left; background: #f8fafc; padding: 12px; font-size: 11px; text-transform: uppercase; border-bottom: 2px solid #e2e8f0; }
+            td { padding: 16px 12px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+            .total-section { margin-top: 30px; text-align: right; border-top: 2px solid #1e293b; padding-top: 20px; }
+            .footer { margin-top: 50px; font-size: 11px; color: #94a3b8; text-align: center; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <h1 style="margin:0; font-size: 28px; font-weight: 900; letter-spacing: -0.02em;">INVOICE</h1>
+              <p style="margin: 5px 0 0 0; color: #64748b; font-size: 12px;">TXN: ${item.transactionId || 'PENDING_SYNC'}</p>
+            </div>
+            <div style="text-align: right">
+              <h2 style="margin:0; font-size: 18px; font-weight: 900; color: #4f46e5;">AUCTION_HUB</h2>
+              <p style="margin: 5px 0 0 0; color: #64748b; font-size: 12px;">Date: ${new Date().toLocaleDateString()}</p>
+            </div>
+          </div>
+          <div class="info-grid">
+            <div>
+              <div class="label">Billed To</div>
+              <div class="value">${user.firstName} ${user.lastName}</div>
+              <div style="color: #64748b; font-size: 13px;">
+                ${item.buyerShippingAddress?.street || 'Verified Warehouse Address'}<br/>
+                ${item.buyerShippingAddress?.city || ''}, ${item.buyerShippingAddress?.state || ''}
+              </div>
+            </div>
+            <div style="text-align: right">
+              <div class="label">Payment Status</div>
+              <div class="value" style="color: #059669;">CONFIRMED / PAID</div>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Product Description</th>
+                <th style="text-align: right;">Final Hammer Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="font-weight: 700;">${item.title}</td>
+                <td style="text-align: right; font-weight: 700;">₹${item.currentBid?.toLocaleString()}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="total-section">
+            <span class="label">Total Amount Paid</span>
+            <div style="font-size: 24px; font-weight: 900;">₹${item.currentBid?.toLocaleString()}</div>
+          </div>
+          <div class="footer">This is an electronically generated document for your purchase at AuctionHub.</div>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(invoiceHTML);
+    printWindow.document.close();
+    printWindow.print();
   };
 
   if (!user) return (
@@ -61,11 +134,9 @@ const Profile = () => {
     <div className="min-h-screen bg-[#FDFDFF] pb-20 selection:bg-indigo-100 selection:text-indigo-900">
       <Navbar />
 
-      {/* --- REFINED HEADER --- */}
       <div className="bg-white border-b border-slate-100 pt-14 pb-8 px-6">
         <div className="max-w-6xl mx-auto">
           <div className="flex flex-col md:flex-row items-center gap-10">
-            {/* Avatar with Ring */}
             <div className="relative">
               <div className="w-24 h-24 bg-slate-900 rounded-[32px] flex items-center justify-center text-white text-3xl font-black shadow-2xl shadow-slate-200 ring-4 ring-slate-50">
                 {user.firstName?.[0]}{user.lastName?.[0]}
@@ -89,7 +160,6 @@ const Profile = () => {
               </div>
             </div>
 
-            {/* Stats Counter */}
             <div className="flex gap-4">
                <div className="bg-slate-50/50 backdrop-blur-sm px-8 py-5 rounded-[28px] border border-slate-100 text-center hover:bg-white hover:shadow-xl hover:shadow-slate-100 transition-all">
                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Purchases</p>
@@ -102,7 +172,6 @@ const Profile = () => {
             </div>
           </div>
 
-          {/* TAB NAV */}
           <div className="mt-16 flex gap-10">
               {[{ id: "won", label: "Inventory Won", icon: <FiTag /> }, 
                 { id: "listings", label: "Selling Hub", icon: <FiPackage /> }
@@ -123,9 +192,13 @@ const Profile = () => {
         <div className="grid grid-cols-1 gap-10">
           <AnimatePresence mode="popLayout">
             
-            {/* --- MY PURCHASES TAB --- */}
             {activeTab === "won" && wonItems.map((item) => {
               const isPaid = item.paymentStatus === "Paid";
+              
+              // --- TIMEOUT LOGIC ---
+              // Checks if the time since winning (endTime) has passed the allowed window
+              const winTimestamp = new Date(item.endTime).getTime();
+              const isExpired = !isPaid && (Date.now() - winTimestamp > PAYMENT_WINDOW);
               
               return (
                 <motion.div 
@@ -133,7 +206,6 @@ const Profile = () => {
                   key={item._id}
                   className="group bg-white rounded-[48px] border border-slate-200/60 overflow-hidden shadow-sm hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-500 grid grid-cols-1 lg:grid-cols-12"
                 >
-                  {/* LEFT: IMAGE */}
                   <div className="lg:col-span-3 bg-slate-50/50 p-10 flex items-center justify-center border-r border-slate-100 overflow-hidden">
                     <motion.img 
                       whileHover={{ scale: 1.1 }}
@@ -143,11 +215,10 @@ const Profile = () => {
                     />
                   </div>
 
-                  {/* CENTER: DETAILS */}
                   <div className="lg:col-span-5 p-10 flex flex-col justify-center">
                     <div className="flex items-center gap-3 mb-4">
-                       <span className={`text-[9px] font-black uppercase tracking-[0.15em] px-3 py-1.5 rounded-full ${isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {isPaid ? "Payment Verified" : "Action Required"}
+                       <span className={`text-[9px] font-black uppercase tracking-[0.15em] px-3 py-1.5 rounded-full ${isPaid ? 'bg-emerald-100 text-emerald-700' : isExpired ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {isPaid ? "Payment Verified" : isExpired ? "Win Expired" : "Action Required"}
                        </span>
                        {isPaid && <span className="text-[9px] font-black uppercase text-indigo-600 tracking-widest flex items-center gap-1"><FiTruck/> In Pipeline</span>}
                     </div>
@@ -170,19 +241,21 @@ const Profile = () => {
                     </div>
                   </div>
 
-                  {/* RIGHT: ACTION AREA */}
                   <div className="lg:col-span-4 p-10 bg-slate-50/30 flex flex-col justify-center border-l border-slate-100 backdrop-blur-sm">
                     {!isPaid ? (
                       <div className="text-center">
-                        <div className="w-14 h-14 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-slate-200/50">
-                          <FiCreditCard className="text-indigo-600 text-xl" />
+                        <div className={`w-14 h-14 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-slate-200/50`}>
+                          <FiCreditCard className={`${isExpired ? 'text-slate-300' : 'text-indigo-600'} text-xl`} />
                         </div>
-                        <p className="text-sm font-bold text-slate-600 mb-6 px-4">Secure your win by completing the transaction node.</p>
+                        <p className="text-sm font-bold text-slate-600 mb-6 px-4">
+                          {isExpired ? "The payment period for this item has ended." : "Secure your win by completing the transaction node."}
+                        </p>
                         <button 
-                          onClick={() => navigate(`/checkout/${item._id}`)} 
-                          className="w-full bg-slate-900 text-white py-5 rounded-[22px] font-black text-[11px] uppercase tracking-[0.25em] hover:bg-indigo-600 active:scale-[0.98] transition-all shadow-xl shadow-slate-200 flex items-center justify-center gap-3"
+                          onClick={() => !isExpired && navigate(`/checkout/${item._id}`)} 
+                          disabled={isExpired}
+                          className={`w-full py-5 rounded-[22px] font-black text-[11px] uppercase tracking-[0.25em] transition-all shadow-xl flex items-center justify-center gap-3 ${isExpired ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'bg-slate-900 text-white hover:bg-indigo-600 active:scale-[0.98] shadow-slate-200'}`}
                         >
-                          Checkout Now <FiArrowRight />
+                          {isExpired ? "Purchase Expired" : "Checkout Now"} {!isExpired && <FiArrowRight />}
                         </button>
                       </div>
                     ) : (
@@ -197,18 +270,17 @@ const Profile = () => {
                               </p>
                            </div>
                         </div>
-
                         <div className="flex gap-4 p-5 bg-white rounded-[24px] border border-slate-100 shadow-sm">
                            <FiFileText className="text-emerald-500 shrink-0 mt-1" />
                            <div>
                               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Internal Reference</p>
-                              <p className="text-[11px] font-mono font-bold text-slate-900 truncate">
-                                {item.transactionId || "SYNCING_TX_NODE..."}
-                              </p>
+                              <p className="text-[11px] font-mono font-bold text-slate-900 truncate">{item.transactionId || "SYNCING_TX_NODE..."}</p>
                            </div>
                         </div>
-
-                        <button className="w-full py-4 bg-white hover:bg-slate-900 hover:text-white border border-slate-200 rounded-[20px] text-[10px] font-black uppercase tracking-widest text-slate-500 transition-all duration-300">
+                        <button 
+                          onClick={() => handlePrintInvoice(item)}
+                          className="w-full py-4 bg-white hover:bg-slate-900 hover:text-white border border-slate-200 rounded-[20px] text-[10px] font-black uppercase tracking-widest text-slate-500 transition-all duration-300"
+                        >
                           Print Invoice
                         </button>
                       </div>
@@ -218,7 +290,6 @@ const Profile = () => {
               );
             })}
 
-            {/* --- SELLER HUB TAB --- */}
             {activeTab === "listings" && myListings.map((listing) => {
               const isSold = listing.status === "Sold" || listing.winnerId;
               const isPaid = listing.paymentStatus === "Paid"; 
@@ -231,7 +302,6 @@ const Profile = () => {
                   animate={{ opacity: 1, y: 0 }}
                   className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm flex flex-col gap-6 mb-6 hover:shadow-md transition-all cursor-pointer"
                 >
-                  {/* WRAP CONTENT TO MAKE CARD CLICKABLE */}
                   <div onClick={() => navigate(isSold ? `/manage-listing/${listing._id}` : `/my-product/${listing._id}`)} className="flex items-center justify-between">
                     <div className="flex items-center gap-6">
                       <div className="w-20 h-20 bg-slate-50 rounded-3xl p-3 flex items-center justify-center border border-slate-100">
@@ -251,14 +321,12 @@ const Profile = () => {
                         </div>
                       </div>
                     </div>
-                    
                     <div className="text-right">
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Final Bid</p>
                       <p className="text-xl font-black text-slate-900">₹{listing.currentBid?.toLocaleString()}</p>
                     </div>
                   </div>
 
-                  {/* SHIPPING WORKFLOW BOX - STOP PROPAGATION TO PREVENT CARD CLICK */}
                   {isPaid && !isShipped ? (
                     <div onClick={(e) => e.stopPropagation()} className="bg-indigo-50/50 p-6 rounded-[32px] border border-indigo-100 flex flex-col md:flex-row items-center gap-4">
                       <div className="flex-grow">
@@ -283,7 +351,7 @@ const Profile = () => {
                     </div>
                   ) : isShipped ? (
                     <div onClick={(e) => e.stopPropagation()} className="bg-emerald-50 p-5 rounded-[28px] border border-emerald-100 flex items-center justify-between">
-                       <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3">
                           <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-emerald-600 shadow-sm">
                             <FiCheckCircle />
                           </div>
@@ -291,15 +359,15 @@ const Profile = () => {
                             <p className="text-[10px] font-black text-emerald-900 uppercase tracking-widest">Dispatched</p>
                             <p className="text-[11px] font-mono text-emerald-600 font-bold">{listing.trackingNumber || "TRK-XXXXXXXX"}</p>
                           </div>
-                       </div>
-                       <button onClick={() => navigate(`/manage-listing/${listing._id}`)} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition">View Details</button>
+                        </div>
+                        <button onClick={() => navigate(`/manage-listing/${listing._id}`)} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition">View Details</button>
                     </div>
                   ) : (
                     <div className="flex justify-between items-center pt-4 border-t border-slate-50">
-                       <p className="text-xs font-bold text-slate-400 italic">Shipping options will unlock once payment is confirmed.</p>
-                       <div className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em] flex items-center gap-2">
-                         Manage Auction <FiArrowRight />
-                       </div>
+                        <p className="text-xs font-bold text-slate-400 italic">Shipping options will unlock once payment is confirmed.</p>
+                        <div className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em] flex items-center gap-2">
+                          Manage Auction <FiArrowRight />
+                        </div>
                     </div>
                   )}
                 </motion.div>
@@ -308,7 +376,6 @@ const Profile = () => {
           </AnimatePresence>
         </div>
 
-        {/* --- EMPTY STATE --- */}
         {((activeTab === "won" && wonItems.length === 0) || (activeTab === "listings" && myListings.length === 0)) && (
           <div className="text-center py-32 bg-slate-50/50 rounded-[60px] border-2 border-dashed border-slate-200">
              <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl">

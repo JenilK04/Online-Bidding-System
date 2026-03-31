@@ -18,6 +18,12 @@ const userSchema = new mongoose.Schema({
     unique: true,
   },
 
+  personalId: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+
   password: {
     type: String,
     required: true,

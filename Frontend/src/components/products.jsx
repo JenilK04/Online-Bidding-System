@@ -22,20 +22,16 @@ const Products = () => {
   const [error, setError] = useState("");
   const [lastUpdatedId, setLastUpdatedId] = useState(null);
   
-  // --- NEW STATE: SEARCH & FILTER ---
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
 
-  // --- LOGIC: Enhanced Sorting Priority (Registered First) ---
+  // --- LOGIC: Sorting Priority ---
   const sortProducts = (data) => {
     const statusOrder = { "Active": 1, "Scheduled": 2, "Sold": 3, "Unsold": 4 };
     
     return [...data].sort((a, b) => {
-      // 1. Registered Priority (assuming product.isRegistered is a boolean)
       if (a.isRegistered && !b.isRegistered) return -1;
       if (!a.isRegistered && b.isRegistered) return 1;
-      
-      // 2. Status Priority
       return (statusOrder[a.status] || 5) - (statusOrder[b.status] || 5);
     });
   };
@@ -54,32 +50,34 @@ const Products = () => {
 
   useEffect(() => {
     fetchProducts();
-  }, []);
 
-  useEffect(() => {
+    // 🔥 REAL-TIME STATUS & PRICE ENGINE
     const handleRemoteUpdate = (updatedProduct) => {
       setProducts((prevProducts) => {
+        // Use functional update to ensure we have the latest state
         const updatedList = prevProducts.map((p) => 
           p._id === updatedProduct._id ? { ...p, ...updatedProduct } : p
         );
         return sortProducts(updatedList);
       });
 
+      // Visual feedback for the update
       setLastUpdatedId(updatedProduct._id);
       setTimeout(() => setLastUpdatedId(null), 2000);
     };
 
-    socket.on("productCreated", (newProduct) => {
+    const handleNewProduct = (newProduct) => {
       setProducts(prev => sortProducts([newProduct, ...prev]));
-    });
+    };
 
+    socket.on("productCreated", handleNewProduct);
     socket.on("productUpdated", handleRemoteUpdate);
 
     return () => {
-      socket.off("productCreated");
+      socket.off("productCreated", handleNewProduct);
       socket.off("productUpdated", handleRemoteUpdate);
     };
-  }, []);
+  }, []); // Listeners initialized once on mount
 
   // --- LOGIC: Compute Filtered List ---
   const filteredProducts = products.filter(p => {
@@ -101,7 +99,6 @@ const Products = () => {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         
-        {/* Header Section */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-10 gap-6">
           <div>
             <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
@@ -112,7 +109,6 @@ const Products = () => {
             </p>
           </div>
 
-          {/* --- SEARCH & FILTER UI --- */}
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative group">
               <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
@@ -174,7 +170,6 @@ const Products = () => {
               >
                 <Link to={`/products/${product._id}`} className="flex flex-col h-full">
                   
-                  {/* Status & Registered Badge */}
                   <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
                     {product.isRegistered && (
                       <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter shadow-md bg-blue-100 text-blue-700 border border-blue-200">
@@ -189,7 +184,6 @@ const Products = () => {
                     </span>
                   </div>
 
-                  {/* Image */}
                   <div className="aspect-square bg-slate-100 relative overflow-hidden">
                     <img
                       src={product.images?.[0] || "https://via.placeholder.com/400"}
@@ -203,7 +197,6 @@ const Products = () => {
                     )}
                   </div>
 
-                  {/* Card Content */}
                   <div className="p-6 flex flex-col flex-grow">
                     <h3 className="text-lg font-bold text-slate-800 leading-tight group-hover:text-blue-600 transition-colors line-clamp-1 mb-2">
                       {product.title}
@@ -220,14 +213,8 @@ const Products = () => {
                       <span className="ml-auto flex items-center gap-1"><FiTrendingUp /> {product.bidsCount || 0} Bids</span>
                     </div>
 
-                    {/* Pricing Logic */}
                     <div className="mt-auto pt-5 border-t border-slate-50 flex items-center justify-between">
                       <div className="flex flex-col">
-                        {product.bidsCount > 0 && product.status !== "Unsold" && (
-                          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tight line-through mb-0.5">
-                            Start: ₹{product.startingPrice.toLocaleString()}
-                          </p>
-                        )}
                         <p className="text-[9px] uppercase font-black text-slate-400 tracking-tighter">
                           {product.status === "Active" ? "Current Bid" : 
                            product.status === "Unsold" ? "Final (Starting)" : "Starting Price"}

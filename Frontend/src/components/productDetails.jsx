@@ -3,11 +3,21 @@ import { useParams, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   FiClock, FiInfo, FiCheckCircle, FiArrowLeft, FiUsers,
-  FiCalendar, FiShield, FiMapPin, FiTruck, FiRotateCcw, FiTrendingUp, FiPackage, FiPlusCircle
+  FiCalendar, FiShield, FiMapPin, FiTruck, FiRotateCcw, FiTrendingUp, FiPackage, FiPlusCircle, FiAlertCircle
 } from "react-icons/fi";
 import Navbar from "./Navbar";
 import API from "../services/api";
 import socket from "../services/socket";
+
+const formatTime = (date) =>
+  new Date(date).toLocaleString(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
 
 const ProductDetails = () => {
   const { id } = useParams();
@@ -59,6 +69,15 @@ const ProductDetails = () => {
     }
   };
 
+  const handlePlaceBid = async () => {
+    try {
+      await API.post(`/bids/${id}`, { amount: Number(bidAmount) });
+      setBidAmount(""); // Reset after success
+    } catch (err) {
+      alert(err.response?.data?.message || "Bidding failed");
+    }
+  };
+
   if (loading) return <div className="p-20 text-center animate-pulse font-black text-slate-400 uppercase tracking-widest">Syncing Auction Floor...</div>;
   if (error || !product) return <div className="p-20 text-center"><p className="text-red-500 mb-4">{error}</p><Link to="/products" className="text-blue-600 font-bold underline">Back to Market</Link></div>;
 
@@ -74,11 +93,15 @@ const ProductDetails = () => {
   const isRegistered = !!registrationRecord;
   const formatDate = (dateStr) => new Date(dateStr).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 
+  // 🔥 DISABLE LOGIC CALCULATION
+  const isHighestBidder = product.highestBidderId === userId;
+  const isAmountTooLow = Number(bidAmount) < minNextBid;
+  const isBidButtonDisabled = isHighestBidder || isAmountTooLow;
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] pb-20">
       <Navbar />
 
-      {/* --- REGISTRATION MODAL --- */}
       <AnimatePresence>
         {showRegModal && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
@@ -98,7 +121,6 @@ const ProductDetails = () => {
       </AnimatePresence>
 
       <main className="max-w-7xl mx-auto px-6 mt-8">
-        {/* --- ADDED DYNAMIC BACK LINK --- */}
         <div className="mb-6">
           <Link to={isOwner ? "/my-products" : "/products"} className="flex items-center gap-2 text-slate-400 hover:text-blue-600 transition-all font-black text-[10px] uppercase tracking-[0.2em] group">
             <FiArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform"/> 
@@ -107,7 +129,6 @@ const ProductDetails = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-          {/* --- LEFT: FULL PRODUCT DETAILS --- */}
           <div className="lg:col-span-7 space-y-8">
             <div className="aspect-[4/3] bg-white rounded-[40px] border border-slate-200 overflow-hidden flex items-center justify-center p-8">
                <img src={product.images?.[selectedImg] || "https://via.placeholder.com/600"} className="max-h-full w-auto object-contain" alt="product" />
@@ -170,7 +191,6 @@ const ProductDetails = () => {
             </div>
           </div>
 
-          {/* --- RIGHT: LIVE AUCTION CONSOLE --- */}
           <div className="lg:col-span-5">
             <div className="sticky top-10 bg-white rounded-[32px] p-8 border border-slate-200 shadow-xl">
                <div className="flex justify-between items-center mb-6">
@@ -206,7 +226,7 @@ const ProductDetails = () => {
                         </p>
                         <p className="text-sm font-black italic">"{registrationRecord.bidderName}"</p>
 
-                        {product.highestBidderId === userId && (
+                        {isHighestBidder && (
                           <motion.div 
                             initial={{ scale: 0.9 }} 
                             animate={{ scale: 1 }} 
@@ -219,12 +239,30 @@ const ProductDetails = () => {
 
                       {product.status === "Active" ? (
                         <div className="space-y-4">
-                           <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-tighter px-1">
-                             <span>Next Bid Must Be &ge;</span>
-                             <span className="text-blue-600">₹{minNextBid.toLocaleString()}</span>
-                           </div>
-                           <input type="number" value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} placeholder={`Min ₹${minNextBid}`} className="w-full p-5 bg-slate-50 border rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10" />
-                           <button onClick={() => API.post(`/bids/${id}`, { amount: Number(bidAmount) })} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl">Confirm Bid</button>
+                            <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-tighter px-1">
+                               <span>Next Bid Must Be &ge;</span>
+                               <span className="text-blue-600">₹{minNextBid.toLocaleString()}</span>
+                            </div>
+                            <input type="number" value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} placeholder={`Min ₹${minNextBid}`} className="w-full p-5 bg-slate-50 border rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10" />
+                            
+                            {/* 🔥 UPDATED BUTTON WITH DISABLE LOGIC */}
+                            <button 
+                              disabled={isBidButtonDisabled} 
+                              onClick={handlePlaceBid} 
+                              className={`w-full py-5 rounded-2xl font-black uppercase text-xs transition-all shadow-xl
+                                ${isBidButtonDisabled 
+                                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' 
+                                  : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'
+                                }`}
+                            >
+                              {isHighestBidder ? "Leading the Auction" : "Confirm Bid"}
+                            </button>
+
+                            {isHighestBidder && (
+                              <p className="text-[10px] text-center font-bold text-green-600 uppercase tracking-widest mt-2 flex items-center justify-center gap-2">
+                                <FiCheckCircle /> You cannot outbid yourself
+                              </p>
+                            )}
                         </div>
                       ) : product.status === "Scheduled" ? (
                         <div className="p-4 bg-slate-100 rounded-2xl text-center text-[10px] font-bold text-slate-500 uppercase">
