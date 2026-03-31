@@ -54,14 +54,12 @@ const Products = () => {
     // 🔥 REAL-TIME STATUS & PRICE ENGINE
     const handleRemoteUpdate = (updatedProduct) => {
       setProducts((prevProducts) => {
-        // Use functional update to ensure we have the latest state
         const updatedList = prevProducts.map((p) => 
           p._id === updatedProduct._id ? { ...p, ...updatedProduct } : p
         );
         return sortProducts(updatedList);
       });
 
-      // Visual feedback for the update
       setLastUpdatedId(updatedProduct._id);
       setTimeout(() => setLastUpdatedId(null), 2000);
     };
@@ -77,9 +75,8 @@ const Products = () => {
       socket.off("productCreated", handleNewProduct);
       socket.off("productUpdated", handleRemoteUpdate);
     };
-  }, []); // Listeners initialized once on mount
+  }, []);
 
-  // --- LOGIC: Compute Filtered List ---
   const filteredProducts = products.filter(p => {
     const matchesSearch = p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           p.brand?.toLowerCase().includes(searchQuery.toLowerCase());
@@ -217,13 +214,17 @@ const Products = () => {
                       <div className="flex flex-col">
                         <p className="text-[9px] uppercase font-black text-slate-400 tracking-tighter">
                           {product.status === "Active" ? "Current Bid" : 
-                           product.status === "Unsold" ? "Final (Starting)" : "Starting Price"}
+                           product.status === "Unsold" ? "Final Bid" : "Current Bid"}
                         </p>
                         <p className={`text-2xl font-black transition-colors ${lastUpdatedId === product._id ? 'text-blue-600' : 'text-slate-900'}`}>
                           ₹{(product.status === "Unsold" || product.bidsCount === 0 
                               ? product.startingPrice 
                               : product.currentBid
                             ).toLocaleString()}
+                        </p>
+                        {/* 🔥 ADDED STARTING PRICE BELOW CURRENT BID */}
+                        <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                          Start: ₹{product.startingPrice.toLocaleString()}
                         </p>
                       </div>
 
