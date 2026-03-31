@@ -7,9 +7,6 @@ import{
   getProductById,
   closeAuction,
   registerForAuction,
-  saveOrderDetails,
-  processPayment
-
 } from "../controller/productscontroller.js";
 
 ;
@@ -21,8 +18,8 @@ router.get("/my-products", verifyToken, getMyProducts);
 router.patch("/close/:id", verifyToken, closeAuction);
 router.get("/:id", verifyToken, getProductById);
 router.post("/register/:id", verifyToken, registerForAuction);
-router.post("/order-details/:id", verifyToken, saveOrderDetails);
-router.post("/payment/:id", verifyToken, processPayment);
+// router.post("/order-details/:id", verifyToken, saveOrderDetails);
+// router.post("/payment/:id", verifyToken, processPayment);
 
 
 export default router;

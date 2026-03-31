@@ -7,7 +7,7 @@ import productRoutes from './routes/productsroutes.js';
 import profileRoutes from './routes/profileRoute.js';
 import bidRoutes from './routes/bidsRoute.js';
 import adminRoutes from "./routes/adminRoute.js";
-// import orderRoutes from "./routes/orderroutes.js";
+import orderRoutes from "./routes/orderroutes.js";
 import { Server } from 'socket.io';
 import http from 'http';
 
@@ -51,6 +51,7 @@ app.use('/api/products',productRoutes );
 app.use("/api/profile", profileRoutes);
 app.use("/api/bids", bidRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/orders", orderRoutes);
 // app.use("/api", orderRoutes);
 
 mongoose.connect(process.env.MONGO_URI)

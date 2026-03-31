@@ -11,8 +11,10 @@ import Checkout from "./components/checkout";
 import AdminUsers from "./components/Admin/Adminusers";
 import AdminEvents from "./components/Admin/adminEvents";
 import AdminFinance from "./components/Admin/adminFinaces"; 
+import SellerManagement from "./components/sellerManagement";
 import ProtectedRoute from "./routes/protectedroutes";  
 import ProductDetails from "./components/productDetails";
+import AdminProtectedRoute from "./routes/adminProtectedRoute";
 
 function App() {
   return(
@@ -74,10 +76,50 @@ function App() {
             }
             />
 
-        <Route path="/admin/dashboard" element={<AdminDashboard />} />
-        <Route path="/admin/users" element={<AdminUsers />} />
-        <Route path="/admin/events" element={<AdminEvents />} />
-        <Route path="/admin/finance" element={<AdminFinance />} />
+            <Route
+            path="/manage-listing/:id"
+            element={
+              // <ProtectedRoute>
+              <SellerManagement />
+              // </ProtectedRoute>
+            }
+            />
+
+       <Route
+            path="/admin/dashboard"
+            element={
+              <AdminProtectedRoute>
+                <AdminDashboard />
+              </AdminProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/users"
+            element={
+              <AdminProtectedRoute>
+                <AdminUsers />
+              </AdminProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/events"
+            element={
+              <AdminProtectedRoute>
+                <AdminEvents />
+              </AdminProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/finance"
+            element={
+              <AdminProtectedRoute>
+                <AdminFinance />
+              </AdminProtectedRoute>
+            }
+          />
       </Routes>
 
     </BrowserRouter>

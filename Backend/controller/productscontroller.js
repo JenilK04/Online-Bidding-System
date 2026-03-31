@@ -315,42 +315,42 @@ export const closeAuction = async (req, res) => {
   }
 };
 
-export const saveOrderDetails = async (req, res) => {
-  const { address, city, contact } = req.body;
-  try {
-    const product = await Product.findById(req.params.id);
+// export const saveOrderDetails = async (req, res) => {
+//   const { address, city, contact } = req.body;
+//   try {
+//     const product = await Product.findById(req.params.id);
 
-    // Security: Only the winner can add shipping info
-    if (product.highestBidder.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Not authorized" });
-    }
+//     // Security: Only the winner can add shipping info
+//     if (product.winnerId.toString() !== req.user.id) {
+//       return res.status(403).json({ message: "Not authorized" });
+//     }
 
-    product.shippingAddress = address;
-    product.city = city;
-    product.contactNumber = contact;
+//     product.shippingAddress = address;
+//     product.city = city;
+//     product.contactNumber = contact;
     
-    await product.save();
-    res.status(200).json({ message: "Shipping details updated", product });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to save details" });
-  }
-};
+//     await product.save();
+//     res.status(200).json({ message: "Shipping details updated", product });
+//   } catch (error) {
+//     res.status(500).json({ message: "Failed to save details" });
+//   }
+// };
 
-// 3. Process Mock Payment
-export const processPayment = async (req, res) => {
-  try {
-    const product = await Product.findById(req.params.id);
+// // 3. Process Mock Payment
+// export const processPayment = async (req, res) => {
+//   try {
+//     const product = await Product.findById(req.params.id);
 
-    if (product.highestBidder.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Unauthorized" });
-    }
+//     if (product.highestBidder.toString() !== req.user.id) {
+//       return res.status(403).json({ message: "Unauthorized" });
+//     }
 
-    product.isPaid = true;
-    product.deliveryStatus = "Pending"; // Moves to seller's queue
+//     product.isPaid = true;
+//     product.deliveryStatus = "Pending"; // Moves to seller's queue
     
-    await product.save();
-    res.status(200).json({ message: "Payment Successful", product });
-  } catch (error) {
-    res.status(500).json({ message: "Payment failed" });
-  }
-};
+//     await product.save();
+//     res.status(200).json({ message: "Payment Successful", product });
+//   } catch (error) {
+//     res.status(500).json({ message: "Payment failed" });
+//   }
+// };

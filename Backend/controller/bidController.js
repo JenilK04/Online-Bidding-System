@@ -15,28 +15,37 @@ export const placeBid = async (req, res) => {
   try {
     const { id } = req.params;
     const { amount } = req.body;
-    const userId = req.user.id;
+    const userId = req.user.id;; // Assuming your user object has firstName
 
     const product = await Product.findById(id);
     if (!product) return res.status(404).json({ message: "Auction not found" });
 
-    // 1. Validation: Is the Auction Active?
+    // 1. Validations
     if (product.status !== "Active") {
       return res.status(400).json({ message: "Bidding is closed for this item." });
     }
 
-    // 2. Validation: Min Bid Check
     const minBidRequired = (product.currentBid || product.startingPrice) + product.bidIncrement;
     if (amount < minBidRequired) {
       return res.status(400).json({ message: `Minimum bid is ₹${minBidRequired}` });
     }
 
-    // 3. Update Database
+    // 2. 🔥 NEW: Create the Bid Record in the Bid collection
+    const newBidRecord = new Bid({
+      productId: id,
+      bidderId: userId,
+      bidderName: userName, // Store name so you don't have to populate every time
+      amount: amount,
+      bidTime: new Date()
+    });
+    await newBidRecord.save();
+
+    // 3. Update Product Model
     product.currentBid = amount;
     product.highestBidderId = userId;
     product.bidsCount += 1;
 
-    // 4. Anti-Snipe (Optional Extension)
+    // 4. Anti-Snipe
     const now = new Date();
     const endTime = new Date(product.endTime);
     if ((endTime - now) / 1000 <= product.antiSnipeWindow) {
@@ -46,11 +55,21 @@ export const placeBid = async (req, res) => {
 
     await product.save();
 
-    // 5. 🔥 SOCKET EMIT: Notify ALL listeners (Product Page & Market Gallery)
-    io.to(id).emit("productUpdated", product); // Room-specific (Details Page)
-    io.emit("productUpdated", product);        // Global (Market Gallery)
+    // 5. 🔥 SOCKET EMITS
+    // Notify the Details page about the product update
+    io.to(id).emit("productUpdated", product); 
+    
+    // Notify the Details page about the NEW BID for the ledger
+    io.to(id).emit("bidPlaced", newBidRecord); 
+    
+    // Global Update for Market Gallery
+    io.emit("productUpdated", product);
 
-    res.status(200).json({ message: "Bid placed successfully", product });
+    res.status(200).json({ 
+      message: "Bid placed successfully", 
+      product, 
+      bid: newBidRecord 
+    });
   } catch (error) {
     res.status(500).json({ message: "Bidding failed", error: error.message });
   }

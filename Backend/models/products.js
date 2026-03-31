@@ -97,27 +97,8 @@ const productSchema = new mongoose.Schema(
 
     // --- 🔹 BUYER FULFILLMENT (New & Updated) ---
     winnerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    
-    // 🚚 BUYER SHIPPING DETAILS
-    // Populated after the auction ends and buyer provides info
-    buyerContactNumber: { type: String, trim: true },
-    buyerShippingAddress: {
-      fullName: String,
-      street: String,
-      city: String,
-      state: String,
-      zipCode: String,
-      phone: String
-    },
-
-    paymentStatus: { type: String, enum: ["Pending", "Paid"], default: "Pending" },
-    deliveryStatus: { 
-      type: String, 
-      enum: ["Pending", "Shipped", "Delivered", "Picked Up"], 
-      default: "Pending" 
-    }
-  },
-  { timestamps: true }
+    orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" }
+  }, { timestamps: true }
 );
 
 productSchema.index({ category: 1, status: 1 });
