@@ -102,3 +102,36 @@ export const login = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+// controllers/userController.js
+export const uploadVerificationDoc = async (req, res) => {
+  try {
+    // If req.file is missing, Multer didn't see the "verificationDoc" field
+    if (!req.file) {
+      return res.status(400).json({ message: "Please upload a document image." });
+    }
+
+    const userId = req.user.id;
+    
+    // 🛡️ CONVERT BUFFER TO BASE64 STRING
+    const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      {
+        verificationDoc: base64Image, // Stores the Base64 URL string
+        verificationStatus: "Pending",
+        isVerified: false 
+      },
+      { new: true }
+    );
+
+    res.status(200).json({
+      message: "Document uploaded successfully. Awaiting admin review.",
+      status: updatedUser.verificationStatus
+    });
+  } catch (error) {
+    console.error("Base64 Upload Error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};

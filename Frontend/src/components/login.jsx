@@ -127,11 +127,8 @@ const Login = () => {
                 }}
               />
 
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <div className="flex justify-end">
-                  <Link to="/forgot-password" size="small" className="text-xs text-blue-600 hover:underline">
-                    Forgot password?
-                  </Link>
                 </div>
                 <TextField
                   fullWidth
@@ -150,6 +147,9 @@ const Login = () => {
                     ),
                   }}
                 />
+                  <Link to="/forgot-password" size="small" className="text-xs text-blue-600 hover:underline">
+                    Forgot password?
+                  </Link>
               </div>
 
               <Button

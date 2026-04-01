@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   FiPackage, FiTruck, FiCheckCircle, FiPhone, FiCreditCard, 
-  FiClock, FiArrowRight, FiMapPin, FiFileText, FiHash, FiActivity, FiTag, FiSend
+  FiClock, FiArrowRight, FiMapPin, FiFileText, FiHash, FiActivity, FiTag, FiSend,
+  FiShield, FiUploadCloud, FiAlertTriangle, FiLock, FiInfo, FiX
 } from "react-icons/fi";
 import Navbar from "./Navbar";
 import API from "../services/api";
@@ -15,7 +16,13 @@ const Profile = () => {
   const [myListings, setMyListings] = useState([]);
   const [activeTab, setActiveTab] = useState("won"); 
 
-  // --- NEW STATES FOR SHIPPING WORKFLOW ---
+  // --- NEW STATES FOR VERIFICATION & BASE64 PREVIEW ---
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null); // To show the image before upload
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+
+  // --- EXISTING STATES FOR SHIPPING WORKFLOW ---
   const [trackingData, setTrackingData] = useState({});
   const [isShipping, setIsShipping] = useState(false);
 
@@ -31,6 +38,51 @@ const Profile = () => {
       setWonItems(res.data.wonProducts || []); 
       setMyListings(res.data.myProducts || []); 
     } catch (err) { console.error("Profile Sync Error:", err); }
+  };
+
+  // --- NEW: FILE CHANGE HANDLER WITH BASE64 PREVIEW ---
+  const onFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        return alert("File too large. Please select an image under 2MB.");
+      }
+      setSelectedFile(file);
+      
+      // Create Base64 Preview for the UI
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // --- NEW: VERIFICATION UPLOAD HANDLER ---
+  const handleFileUpload = async () => {
+    if (!selectedFile) return alert("Please select a document image first.");
+    
+    setIsVerifying(true);
+    const formData = new FormData();
+    // This key MUST match: upload.single("verificationDoc") in your backend route
+    formData.append("verificationDoc", selectedFile);
+
+    try {
+      await API.post("/auth/verify-documents", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      setUploadSuccess(true);
+      setTimeout(() => {
+        setUploadSuccess(false);
+        setPreviewUrl(null);
+        setSelectedFile(null);
+        fetchData(); // Refresh to show "Pending" status
+      }, 3000);
+    } catch (err) {
+      alert(err.response?.data?.message || "Upload failed. Please try again.");
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   const handleShipAction = async (productId) => {
@@ -134,15 +186,35 @@ const Profile = () => {
     <div className="min-h-screen bg-[#FDFDFF] pb-20 selection:bg-indigo-100 selection:text-indigo-900">
       <Navbar />
 
+      {/* --- KYC WARNING BANNER --- */}
+      {!user.isVerified && user.verificationStatus !== "Pending" && (
+        <div className="bg-amber-50 border-b border-amber-100 px-6 py-3">
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3 text-amber-800">
+              <FiAlertTriangle className="animate-pulse" />
+              <p className="text-[10px] font-black uppercase tracking-widest">
+                Verification Required: Please upload your documents for ID: {user.personalId}
+              </p>
+            </div>
+            <button 
+              onClick={() => setActiveTab("verify")}
+              className="text-[10px] font-black uppercase text-amber-900 underline underline-offset-4"
+            >
+              Verify Now
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white border-b border-slate-100 pt-14 pb-8 px-6">
         <div className="max-w-6xl mx-auto">
           <div className="flex flex-col md:flex-row items-center gap-10">
             <div className="relative">
-              <div className="w-24 h-24 bg-slate-900 rounded-[32px] flex items-center justify-center text-white text-3xl font-black shadow-2xl shadow-slate-200 ring-4 ring-slate-50">
+              <div className={`w-24 h-24 rounded-[32px] flex items-center justify-center text-white text-3xl font-black shadow-2xl ring-4 ring-slate-50 ${user.isVerified ? 'bg-indigo-600 shadow-indigo-200' : 'bg-slate-900 shadow-slate-200'}`}>
                 {user.firstName?.[0]}{user.lastName?.[0]}
               </div>
-              <div className="absolute -bottom-2 -right-2 bg-emerald-500 w-8 h-8 rounded-2xl border-4 border-white flex items-center justify-center shadow-lg">
-                <FiCheckCircle className="text-white text-xs" />
+              <div className={`absolute -bottom-2 -right-2 w-8 h-8 rounded-2xl border-4 border-white flex items-center justify-center shadow-lg ${user.isVerified ? 'bg-emerald-500' : 'bg-amber-500'}`}>
+                {user.isVerified ? <FiCheckCircle className="text-white text-xs" /> : <FiShield className="text-white text-xs" />}
               </div>
             </div>
             
@@ -154,8 +226,8 @@ const Profile = () => {
                 <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
                   <FiHash /> {user.email}
                 </span>
-                <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
-                  <FiActivity /> Active Bidder
+                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${user.isVerified ? 'bg-emerald-50 text-emerald-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                  <FiActivity /> {user.isVerified ? 'Verified Pro' : user.verificationStatus || 'Unverified'}
                 </span>
               </div>
             </div>
@@ -173,8 +245,10 @@ const Profile = () => {
           </div>
 
           <div className="mt-16 flex gap-10">
-              {[{ id: "won", label: "Inventory Won", icon: <FiTag /> }, 
-                { id: "listings", label: "Selling Hub", icon: <FiPackage /> }
+              {[
+                { id: "won", label: "Inventory Won", icon: <FiTag /> }, 
+                { id: "listings", label: "Selling Hub", icon: <FiPackage /> },
+                { id: "verify", label: "Verification", icon: <FiShield /> }
               ].map((tab) => (
                 <button 
                   key={tab.id}
@@ -192,11 +266,81 @@ const Profile = () => {
         <div className="grid grid-cols-1 gap-10">
           <AnimatePresence mode="popLayout">
             
+            {/* --- VERIFICATION TAB CONTENT --- */}
+            {activeTab === "verify" && (
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="max-w-2xl mx-auto w-full">
+                <div className="bg-white rounded-[48px] border border-slate-200 p-12 shadow-sm text-center">
+                  <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-[30px] flex items-center justify-center mx-auto mb-8 shadow-inner">
+                    <FiLock size={32} />
+                  </div>
+                  <h2 className="text-3xl font-black text-slate-900 mb-4">Account Verification</h2>
+                  <p className="text-slate-500 font-medium mb-8 leading-relaxed">
+                    To maintain market integrity, please upload a copy of the ID associated with: <span className="text-slate-900 font-bold">{user.personalId}</span>
+                  </p>
+
+                  {user.isVerified ? (
+                    <div className="bg-emerald-50 border border-emerald-100 p-10 rounded-[32px] flex flex-col items-center gap-4">
+                      <FiCheckCircle className="text-emerald-500 text-5xl" />
+                      <div>
+                        <p className="text-emerald-900 font-black uppercase text-xs tracking-widest">Verification Complete</p>
+                        <p className="text-emerald-600 text-[11px] mt-1 font-bold">Your account has full trading privileges.</p>
+                      </div>
+                    </div>
+                  ) : (user.verificationStatus === "Pending" || uploadSuccess) ? (
+                    <div className="bg-blue-50 border border-blue-100 p-10 rounded-[32px] flex flex-col items-center gap-4">
+                      <FiClock className="text-blue-500 text-5xl animate-spin-slow" />
+                      <div>
+                        <p className="text-blue-900 font-black uppercase text-xs tracking-widest">Under Admin Review</p>
+                        <p className="text-blue-600 text-[11px] mt-1 font-bold">We are validating your document. This usually takes 2-4 hours.</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {/* Image Preview Node */}
+                      {previewUrl && (
+                        <div className="mb-6 relative group max-w-xs mx-auto">
+                          <img src={previewUrl} className="rounded-3xl border-4 border-white shadow-xl w-full object-cover aspect-video" alt="Preview" />
+                          <button 
+                            onClick={() => { setPreviewUrl(null); setSelectedFile(null); }} 
+                            className="absolute -top-2 -right-2 bg-red-500 text-white p-2 rounded-full shadow-lg hover:bg-red-600 transition-colors"
+                          >
+                            <FiX />
+                          </button>
+                        </div>
+                      )}
+
+                      <label className="group block cursor-pointer bg-slate-50 border-2 border-dashed border-slate-200 p-16 rounded-[40px] hover:border-indigo-400 hover:bg-white transition-all duration-300">
+                        <FiUploadCloud className="mx-auto text-5xl text-slate-300 group-hover:text-indigo-500 mb-4 transition-colors" />
+                        <p className="text-sm font-black text-slate-400 group-hover:text-slate-900 uppercase tracking-widest">
+                          {selectedFile ? selectedFile.name : "Choose File or Drag Here"}
+                        </p>
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept="image/*" 
+                          onChange={onFileChange} 
+                        />
+                      </label>
+
+                      <button 
+                        onClick={handleFileUpload}
+                        disabled={isVerifying || !selectedFile}
+                        className={`w-full py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-xl transition-all ${isVerifying || !selectedFile ? 'bg-slate-100 text-slate-400' : 'bg-slate-900 text-white hover:bg-indigo-600 shadow-indigo-100'}`}
+                      >
+                        {isVerifying ? "Encoding Identity..." : "Submit for Approval"}
+                      </button>
+                      <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                        <FiInfo /> Document must clearly show your full name and ID number.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+
+            {/* --- WON ITEMS TAB (KEEPING EVERYTHING) --- */}
             {activeTab === "won" && wonItems.map((item) => {
               const isPaid = item.paymentStatus === "Paid";
-              
-              // --- TIMEOUT LOGIC ---
-              // Checks if the time since winning (endTime) has passed the allowed window
               const winTimestamp = new Date(item.endTime).getTime();
               const isExpired = !isPaid && (Date.now() - winTimestamp > PAYMENT_WINDOW);
               
@@ -290,6 +434,7 @@ const Profile = () => {
               );
             })}
 
+            {/* --- LISTINGS TAB (KEEPING EVERYTHING) --- */}
             {activeTab === "listings" && myListings.map((listing) => {
               const isSold = listing.status === "Sold" || listing.winnerId;
               const isPaid = listing.paymentStatus === "Paid"; 

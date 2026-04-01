@@ -65,5 +65,3 @@ export const getProfile = async (req, res) => {
     });
   }
 };
-
-/* --- updateProfileDetails remains the same --- */
