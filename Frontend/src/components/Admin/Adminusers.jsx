@@ -19,7 +19,7 @@ const AdminUsers = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const res = await API.get("/admin/users");
+      const res = await API.get("admin/users");
       setUsers(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error("Fetch Users Error:", err);
@@ -36,11 +36,11 @@ const AdminUsers = () => {
     localStorage.removeItem("user");
     navigate("/login");
   };
-
+  
   // --- 1. KYC VERIFICATION HANDLER (Document Approval) ---
   const handleVerification = async (userId, status) => {
     try {
-      await API.patch(`/admin/verify/${userId}`, { status });
+      await API.patch(`admin/verify/${userId}`, { status });
       setUsers(users.map(u => u._id === userId ? { 
         ...u, 
         verificationStatus: status, 

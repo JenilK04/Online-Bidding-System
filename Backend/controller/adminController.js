@@ -173,21 +173,42 @@ export const verifyUser = async (req, res) => {
 export const updateUserStatus = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { newStatus } = req.body; // Expects "active", "deactivated", or "suspended"
+    const { status } = req.body;
 
-    const user = await User.findByIdAndUpdate(
+    // 1. Validate the status against your allowed values
+    const allowedStatuses = ["active", "deactivated", "suspended"];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ message: "Invalid status value" });
+    }
+
+    // 2. Safety Check: Prevent Admin from suspending their own account
+    if (req.user.id === userId && status !== "active") {
+      return res.status(403).json({ 
+        message: "Safety Lock: You cannot deactivate or suspend your own admin account." 
+      });
+    }
+
+    // 3. Find and Update
+    const updatedUser = await User.findByIdAndUpdate(
       userId,
-      { status: newStatus },
-      { new: true }
-    );
+      { status: status },
+      { new: true, runValidators: true }
+    ).select("-password");
 
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-    res.status(200).json({ 
-      message: `User is now ${newStatus}`, 
-      user 
+    // 4. Return success
+    res.status(200).json({
+      message: `User status updated to ${status} successfully`,
+      user: updatedUser
     });
+
   } catch (error) {
-    res.status(500).json({ message: "Error updating status" });
+    res.status(500).json({
+      message: "Server error during status update",
+      error: error.message
+    });
   }
 };

@@ -10,9 +10,9 @@ export const getProfile = async (req, res) => {
     const userId = req.user.id;
 
     // 1. Get user info
-    const user = await User.findById(userId).select("-password");
+    const userDoc = await User.findById(userId).select("-password");
 
-    if (!user) {
+    if (!userDoc) {
       return res.status(404).json({ message: "User not found" });
     }
 
@@ -20,13 +20,11 @@ export const getProfile = async (req, res) => {
     const myProducts = await Product.find({ sellerId: userId }).sort({ createdAt: -1 });
 
     // 3. Get Won Products AND their Order details
-    // We fetch products won by the user
     const wonProductsRaw = await Product.find({ 
       winnerId: userId,
       status: { $in: ["Ended", "Sold"] } 
     }).lean().sort({ updatedAt: -1 });
 
-    // 🔥 THE FIX: Map through won products and attach the Order (if any)
     const wonProducts = await Promise.all(
       wonProductsRaw.map(async (product) => {
         const order = await Order.findOne({ 
@@ -36,7 +34,6 @@ export const getProfile = async (req, res) => {
         
         return {
           ...product,
-          // Attach the payment and shipping data from the Order model
           paymentStatus: order ? order.paymentStatus : "Pending",
           deliveryStatus: order ? order.deliveryStatus : "Pending",
           transactionId: order ? order.transactionId : null,
@@ -51,10 +48,12 @@ export const getProfile = async (req, res) => {
       "registeredUsers.userId": userId
     }).sort({ createdAt: -1 });
 
+    // 🔥 THE FIX: Spread the user document into the root of the response
+    // This ensures res.data on the frontend HAS the status, role, and firstName directly.
     res.json({
-      user,
+      ...userDoc._doc, // Spreads firstName, status, role, etc., into the main object
       myProducts,
-      wonProducts, // Now contains merged Order data
+      wonProducts,
       registeredProducts
     });
 

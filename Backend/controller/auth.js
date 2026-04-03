@@ -36,10 +36,8 @@ export const register = async (req, res) => {
       phone, 
       personalId,
       password: hashedPassword,
-      // 🔥 SECURITY LOGIC: 
-      // Force 'user' role for public registrations. 
-      // Do NOT take the role from req.body directly.
-      role: "user" 
+      role: "user",
+      status: "active"
     });
 
     await newUser.save();

@@ -15,10 +15,39 @@ import SellerManagement from "./components/sellerManagement";
 import ProtectedRoute from "./routes/protectedroutes";  
 import ProductDetails from "./components/productDetails";
 import AdminProtectedRoute from "./routes/adminProtectedRoute";
+import { AuthProvider,useAuth } from "./context/authContext";
+import { useLocation } from "react-router-dom";
+import AccountRestricted from "./components/accountRestrication";
+import LoadingSpinner from "./components/LoadingSpinner";
 
-function App() {
+const AppContent = () => {
+
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  // 1. STACK GUARD: If we are still loading, show the spinner. 
+  // Do NOT let the code proceed past this line until loading is false.
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+
+  // 2. PATH CHECK: Define pages where the lockdown NEVER applies.
+  const publicPaths = ["/login", "/register", "/"];
+  const isPublicPage = publicPaths.includes(location.pathname);
+
+  // 3. THE LOCKDOWN: Use Optional Chaining (?.) to prevent "undefined" errors.
+  // This says: "If user exists AND is NOT an admin AND is NOT active..."
+  if (user && user?.role !== "admin") {
+    
+    // Normalize the status string to lowercase to prevent "Active" vs "active" bugs
+    const currentStatus = user?.status;
+    console.log("User status:", user.firstName, "| Is public page?", isPublicPage);
+
+    if (currentStatus !== "active" && !isPublicPage) {
+      return <AccountRestricted />;
+    }
+  }
   return(
-    <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/register" element={<Register />} />
@@ -122,8 +151,19 @@ function App() {
           />
       </Routes>
 
-    </BrowserRouter>
   );
 }
+
+export const App = () => {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
+    </AuthProvider>
+  );
+};
+
+
 
 export default App;

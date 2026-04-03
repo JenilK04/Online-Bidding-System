@@ -5,7 +5,8 @@ import {
   toggleUserStatus,
   getAdminEvents,
   getFinanceStats,
-  verifyUser
+  verifyUser,
+  updateUserStatus
 } from "../controller/adminController.js";
 import { verifyToken, isAdmin } from "../middleware/jwt.js";
 
@@ -18,6 +19,7 @@ router.patch("/users/:id/status", verifyToken, isAdmin, toggleUserStatus);
 router.get("/events", verifyToken, isAdmin, getAdminEvents);
 router.get("/finance", verifyToken, isAdmin, getFinanceStats);
 router.patch('/verify/:id', verifyToken, isAdmin, verifyUser);
+router.patch(`/users/:userId/status`, verifyToken, isAdmin, updateUserStatus);
 
 
 export default router;
