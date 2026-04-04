@@ -55,7 +55,8 @@ const ProductDetails = () => {
 
     const handleUpdate = (updated) => {
       console.log("Real-time update received for:", updated.title);
-      setProduct(updated);
+      // Merge updates to keep existing fields if the socket update is partial
+      setProduct(prev => ({ ...prev, ...updated }));
       setIsPriceUpdating(true);
       setTimeout(() => setIsPriceUpdating(false), 2000);
     };
@@ -68,7 +69,7 @@ const ProductDetails = () => {
     };
   }, [id]);
 
-  // 🔥 UPDATED: Logic now recalculates automatically when 'product' state changes
+  // Logic recalculates automatically when 'product' state changes
   const currentPrice = product?.currentBid > 0 ? product.currentBid : (product?.startingPrice || 0);
   const minNextBid = currentPrice + (product?.bidIncrement || 0);
   
@@ -95,7 +96,12 @@ const ProductDetails = () => {
     if (!tempBidderName.trim()) return alert("Please enter a name.");
     try {
       const res = await API.post(`/products/register/${id}`, { bidderName: tempBidderName });
-      setProduct(res.data.product || res.data); 
+      
+      // FIX: Spread previous product state to ensure details like 'images' aren't lost 
+      // if the backend response is partial or structured differently.
+      const updatedData = res.data.product || res.data;
+      setProduct(prev => ({ ...prev, ...updatedData })); 
+      
       setTempBidderName(""); 
       setShowRegModal(false);
     } catch (err) {
@@ -148,11 +154,11 @@ const ProductDetails = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
           <div className="lg:col-span-7 space-y-8">
             <div className="aspect-[4/3] bg-white rounded-[40px] border border-slate-200 overflow-hidden flex items-center justify-center p-8">
-               <img src={product.images?.[selectedImg] || "https://via.placeholder.com/600"} className="max-h-full w-auto object-contain" alt="product" />
+               <img src={product?.images?.[selectedImg] || "https://via.placeholder.com/600"} className="max-h-full w-auto object-contain" alt="product" />
             </div>
 
             <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
-              {product.images?.map((img, i) => (
+              {product?.images?.map((img, i) => (
                 <button key={i} onClick={() => setSelectedImg(i)} className={`w-20 h-20 shrink-0 rounded-2xl border-2 transition-all ${selectedImg === i ? 'border-blue-600 ring-4 ring-blue-50' : 'border-slate-100 opacity-60'}`}>
                   <img src={img} className="w-full h-full object-cover rounded-xl" alt="" />
                 </button>
@@ -163,12 +169,12 @@ const ProductDetails = () => {
               <div>
                 <h3 className="text-xl font-black mb-6 flex items-center gap-2 text-slate-800"><FiInfo className="text-blue-600"/> Item Specifics</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
-                  <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Brand</p><p className="text-sm font-black text-slate-800">{product.brand || "Generic"}</p></div>
-                  <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Condition</p><p className="text-sm font-black text-blue-600">{product.condition}</p></div>
-                  <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bid Increment</p><p className="text-sm font-black text-green-600">₹{product.bidIncrement}</p></div>
-                  <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Category</p><p className="text-sm font-black text-slate-800">{product.category}</p></div>
-                  <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">SKU</p><p className="text-sm font-black text-slate-800">{product.sku || "N/A"}</p></div>
-                  <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Registrations</p><p className="text-sm font-black text-slate-800">{product.registeredUsers?.length} / {product.maxRegistrations}</p></div>
+                  <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Brand</p><p className="text-sm font-black text-slate-800">{product?.brand || "Generic"}</p></div>
+                  <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Condition</p><p className="text-sm font-black text-blue-600">{product?.condition}</p></div>
+                  <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bid Increment</p><p className="text-sm font-black text-green-600">₹{product?.bidIncrement}</p></div>
+                  <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Category</p><p className="text-sm font-black text-slate-800">{product?.category}</p></div>
+                  <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">SKU</p><p className="text-sm font-black text-slate-800">{product?.sku || "N/A"}</p></div>
+                  <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Registrations</p><p className="text-sm font-black text-slate-800">{product?.registeredUsers?.length} / {product?.maxRegistrations}</p></div>
                 </div>
               </div>
 
@@ -177,11 +183,11 @@ const ProductDetails = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 p-6 rounded-3xl border border-slate-100">
                   <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Starts At</p>
-                    <p className="text-sm font-black text-slate-700">{formatDate(product.startTime)}</p>
+                    <p className="text-sm font-black text-slate-700">{product?.startTime ? formatDate(product.startTime) : 'N/A'}</p>
                   </div>
                   <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Ends At</p>
-                    <p className="text-sm font-black text-slate-700">{formatDate(product.endTime)}</p>
+                    <p className="text-sm font-black text-slate-700">{product?.endTime ? formatDate(product.endTime) : 'N/A'}</p>
                   </div>
                 </div>
               </div>
@@ -190,20 +196,20 @@ const ProductDetails = () => {
                 <h3 className="text-xl font-black mb-4 flex items-center gap-2 text-slate-800"><FiTruck className="text-blue-600"/> Logistics & Returns</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-3">
-                    <div className="flex justify-between text-sm font-medium"><span className="text-slate-400">Shipping Weight</span><span className="text-slate-900">{product.shippingWeight}g</span></div>
-                    <div className="flex justify-between text-sm font-medium"><span className="text-slate-400">Box Dimensions</span><span className="text-slate-900">{product.dimensions?.length}x{product.dimensions?.width}x{product.dimensions?.height} cm</span></div>
-                    <div className="flex items-center gap-2 text-[11px] font-bold text-blue-600 uppercase pt-2"><FiMapPin /> Item Location: {product.sellerAddress?.city}, {product.sellerAddress?.state}</div>
+                    <div className="flex justify-between text-sm font-medium"><span className="text-slate-400">Shipping Weight</span><span className="text-slate-900">{product?.shippingWeight}g</span></div>
+                    <div className="flex justify-between text-sm font-medium"><span className="text-slate-400">Box Dimensions</span><span className="text-slate-900">{product?.dimensions?.length}x{product?.dimensions?.width}x{product?.dimensions?.height} cm</span></div>
+                    <div className="flex items-center gap-2 text-[11px] font-bold text-blue-600 uppercase pt-2"><FiMapPin /> Item Location: {product?.sellerAddress?.city}, {product?.sellerAddress?.state}</div>
                   </div>
                   <div className="space-y-3">
-                    <div className="flex justify-between text-sm font-medium"><span className="text-slate-400">Returns</span><span className={product.returnPolicy?.acceptsReturns ? 'text-green-600' : 'text-red-500'}>{product.returnPolicy?.acceptsReturns ? 'Accepted' : 'Final Sale'}</span></div>
-                    <div className="flex justify-between text-sm font-medium"><span className="text-slate-400">Window</span><span className="text-slate-900">{product.returnPolicy?.returnWindow}</span></div>
+                    <div className="flex justify-between text-sm font-medium"><span className="text-slate-400">Returns</span><span className={product?.returnPolicy?.acceptsReturns ? 'text-green-600' : 'text-red-500'}>{product?.returnPolicy?.acceptsReturns ? 'Accepted' : 'Final Sale'}</span></div>
+                    <div className="flex justify-between text-sm font-medium"><span className="text-slate-400">Window</span><span className="text-slate-900">{product?.returnPolicy?.returnWindow}</span></div>
                   </div>
                 </div>
               </div>
 
               <div className="border-t pt-8">
                 <p className="text-[10px] font-bold text-slate-400 uppercase mb-3">Item Description</p>
-                <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-line">{product.description}</p>
+                <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-line">{product?.description}</p>
               </div>
             </div>
           </div>
@@ -211,20 +217,20 @@ const ProductDetails = () => {
           <div className="lg:col-span-5">
             <div className="sticky top-10 bg-white rounded-[32px] p-8 border border-slate-200 shadow-xl">
                <div className="flex justify-between items-center mb-6">
-                 <span className={`px-4 py-1.5 text-white text-[10px] font-black uppercase rounded-full tracking-widest ${product.status === "Active" ? "bg-green-600" : "bg-blue-600"}`}>
-                   {product.status}
+                 <span className={`px-4 py-1.5 text-white text-[10px] font-black uppercase rounded-full tracking-widest ${product?.status === "Active" ? "bg-green-600" : "bg-blue-600"}`}>
+                   {product?.status}
                  </span>
-                 {product.isExtended && <span className="text-orange-500 text-[10px] font-bold animate-pulse flex items-center gap-1"><FiClock /> EXTENDED</span>}
+                 {product?.isExtended && <span className="text-orange-500 text-[10px] font-bold animate-pulse flex items-center gap-1"><FiClock /> EXTENDED</span>}
                </div>
 
-               <h1 className="text-3xl font-black text-slate-900 mb-8 leading-tight">{product.title}</h1>
+               <h1 className="text-3xl font-black text-slate-900 mb-8 leading-tight">{product?.title}</h1>
 
                <motion.div animate={isPriceUpdating ? { scale: [1, 1.05, 1], backgroundColor: ["#ffffff", "#f0fdf4", "#ffffff"] } : {}} className="p-6 rounded-3xl border border-slate-100 bg-slate-50/50 mb-8">
                   <p className="text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-widest">Current Bid</p>
                   <p className={`text-4xl font-black ${isPriceUpdating ? "text-green-600" : "text-blue-600"}`}>₹{currentPrice.toLocaleString()}</p>
                   <div className="flex gap-4 mt-3 border-t pt-3 border-slate-100">
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase"><FiTrendingUp/> {product.bidsCount} Bids</span>
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase"><FiUsers/> {product.registeredUsers?.length} Registered</span>
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase"><FiTrendingUp/> {product?.bidsCount} Bids</span>
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase"><FiUsers/> {product?.registeredUsers?.length} Registered</span>
                   </div>
                </motion.div>
 
@@ -241,7 +247,7 @@ const ProductDetails = () => {
                         <p className="font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 mb-1">
                           <FiCheckCircle /> Registered As
                         </p>
-                        <p className="text-sm font-black italic">"{registrationRecord.bidderName}"</p>
+                        <p className="text-sm font-black italic">"{registrationRecord?.bidderName}"</p>
 
                         {isHighestBidder && (
                           <motion.div 
@@ -254,7 +260,7 @@ const ProductDetails = () => {
                         )}
                       </div>
 
-                      {product.status === "Active" ? (
+                      {product?.status === "Active" ? (
                         <div className="space-y-4">
                             <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-tighter px-1">
                                <span>Next Bid Must Be &ge;</span>
@@ -280,15 +286,15 @@ const ProductDetails = () => {
                               </p>
                             )}
                         </div>
-                      ) : product.status === "Scheduled" ? (
+                      ) : product?.status === "Scheduled" ? (
                         <div className="p-4 bg-slate-100 rounded-2xl text-center text-[10px] font-bold text-slate-500 uppercase">
-                          Bidding Opens: {formatDate(product.startTime)}
+                          Bidding Opens: {product?.startTime ? formatDate(product.startTime) : 'N/A'}
                         </div>
                       ) : null}
                    </div>
-                 ) : product.status === "Scheduled" ? (
+                 ) : product?.status === "Scheduled" ? (
                    <button onClick={() => setShowRegModal(true)} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-100 hover:bg-blue-700 active:scale-95 transition-all">Register to Bid</button>
-                 ) : product.status === "Active" ? (
+                 ) : product?.status === "Active" ? (
                    <div className="p-6 bg-red-50 rounded-2xl border border-red-100 text-center">
                       <p className="text-red-600 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2"><FiShield/> Registration Missed</p>
                       <p className="text-slate-400 text-[10px] mt-1">You must register during the scheduled phase to bid.</p>
