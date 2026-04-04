@@ -33,50 +33,59 @@ const MyProducts = () => {
   useEffect(() => { 
     fetchMyProducts(); 
 
-    // 🔥 REAL-TIME STATUS ENGINE: 
-    // This listener handles status transitions (Scheduled -> Active -> Sold) 
-    // and bid updates emitted from the backend calculateStatus and placeBid functions.
+    /**
+     * 🔥 REAL-TIME ENGINE
+     * We listen for 'globalProductUpdate' because the Seller Hub 
+     * monitors multiple products simultaneously without joining individual rooms.
+     */
     const handleUpdate = (updatedProduct) => {
       setProducts((prev) =>
         prev.map((p) => (p._id === updatedProduct._id ? { ...p, ...updatedProduct } : p))
       );
     };
 
-    const handleNewProduct = (newP) => {
-      setProducts((prev) => {
-        if (prev.find(p => p._id === newP._id)) return prev;
-        return [newP, ...prev];
-      });
-    };
+    // const handleNewProduct = (newP) => {
+    //   setProducts((prev) => {
+    //     if (prev.find(p => p._id === newP._id)) return prev;
+    //     return [newP, ...prev];
+    //   });
+    // };
 
-    socket.on("productUpdated", handleUpdate);
-    socket.on("productCreated", handleNewProduct);
+    // Listen for the global broadcast defined in index.js
+    socket.on("globalProductUpdate", handleUpdate);
+    // socket.on("productCreated", handleNewProduct);
 
     return () => {
-      socket.off("productUpdated", handleUpdate);
-      socket.off("productCreated", handleNewProduct);
+      socket.off("globalProductUpdate", handleUpdate);
+      // socket.off("productCreated", handleNewProduct);
     };
   }, []); 
 
   const confirmCloseBid = async () => {
     try {
-      const res = await API.patch(`/products/close/${selectedProductId}`);
-      // Manually update local state for immediate feedback
-      setProducts((prev) =>
-        prev.map((p) => (p._id === selectedProductId ? { ...p, ...res.data } : p))
-      );
+      await API.patch(`/products/close/${selectedProductId}`);
+      // Note: We don't need to manually update state here anymore 
+      // because the backend emit will trigger handleUpdate automatically.
       setShowCloseModal(false);
     } catch (err) {
       alert("Failed to close auction.");
     }
   };
 
-  // Stats are automatically recalculated whenever the 'products' state changes via Socket
+  // Stats auto-calculate based on the real-time 'products' state
   const activeCount = products.filter(p => p.status === 'Active').length;
   const soldCount = products.filter(p => p.status === 'Sold').length;
   const totalRevenue = products
     .filter(p => p.status === 'Sold')
     .reduce((acc, curr) => acc + (curr.currentBid || 0), 0);
+
+  if (loading) return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="font-black text-slate-400 animate-pulse tracking-widest uppercase">
+        Loading Seller Hub...
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -94,7 +103,7 @@ const MyProducts = () => {
           </button>
         </div>
 
-        {/* STATS */}
+        {/* STATS - These update in real-time as bids come in */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 mb-12">
           {[
             { label: "Live Now", val: activeCount, icon: <FiActivity />, color: "bg-green-50 text-green-600" },
@@ -104,7 +113,10 @@ const MyProducts = () => {
           ].map((stat, i) => (
             <div key={i} className="bg-white p-6 rounded-[32px] border border-slate-100 flex items-center gap-4 shadow-sm">
               <div className={`w-12 h-12 ${stat.color} rounded-2xl flex items-center justify-center text-xl`}>{stat.icon}</div>
-              <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{stat.label}</p><p className="text-xl font-black text-slate-900">{stat.val}</p></div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{stat.label}</p>
+                <p className="text-xl font-black text-slate-900">{stat.val}</p>
+              </div>
             </div>
           ))}
         </div>
@@ -119,47 +131,37 @@ const MyProducts = () => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9 }}
                 key={p._id}
-                whileHover={{ y: -8, transition: { duration: 0.2 } }}
+                whileHover={{ y: -8 }}
                 onClick={() => navigate(`/my-product/${p._id}`)}
                 className={`group cursor-pointer bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-sm hover:shadow-2xl hover:shadow-blue-500/10 hover:border-blue-200 transition-all duration-300 relative ${p.status === "Sold" ? "ring-2 ring-green-500/10" : ""}`}
               >
-                {/* IMAGE CONTAINER */}
+                {/* IMAGE */}
                 <div className="aspect-[16/10] relative overflow-hidden">
-                  <motion.img 
-                    src={p.images?.[0]} 
-                    className="w-full h-full object-cover" 
-                    alt="" 
-                    whileHover={{ scale: 1.05 }}
-                    transition={{ duration: 0.6 }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                  
+                  <img src={p.images?.[0]} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="" />
                   <span className={`absolute top-5 left-5 px-4 py-1.5 rounded-full text-[10px] font-black uppercase text-white shadow-lg backdrop-blur-md ${p.status === 'Active' ? 'bg-green-500/90' : p.status === 'Sold' ? 'bg-slate-900/90' : 'bg-blue-500/90'}`}>
                     {p.status}
                   </span>
                 </div>
 
-                {/* CONTENT */}
+                {/* INFO */}
                 <div className="p-8">
                   <h2 className="text-2xl font-black text-slate-900 truncate mb-5 group-hover:text-blue-600 transition-colors">{p.title}</h2>
                   
                   <div className="grid grid-cols-2 gap-4 mb-8">
-                    <div className="p-4 bg-slate-50 rounded-[24px] group-hover:bg-blue-50/50 transition-colors">
+                    <div className="p-4 bg-slate-50 rounded-[24px]">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Current Bid</p>
                       <p className="text-lg font-black text-blue-600">₹{(p.currentBid || p.startingPrice).toLocaleString()}</p>
                     </div>
-                    <div className="p-4 bg-slate-50 rounded-[24px] group-hover:bg-slate-100 transition-colors">
+                    <div className="p-4 bg-slate-50 rounded-[24px]">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Bidders</p>
                       <p className="text-lg font-black text-slate-700">{p.registeredUsers?.length || 0}</p>
                     </div>
                   </div>
 
-                  {/* FOOTER */}
                   <div className="flex items-center justify-between gap-4 mt-2">
-                    <div className="flex-grow group-hover:translate-x-1 transition-transform duration-300">
-                      <div className="inline-flex items-center gap-2 bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-slate-200 group-hover:bg-blue-600 group-hover:shadow-blue-100 transition-all">
-                        <FiActivity size={14} className="group-hover:animate-pulse" />
-                        View Console
+                    <div className="flex-grow">
+                      <div className="inline-flex items-center gap-2 bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest group-hover:bg-blue-600 transition-all">
+                        <FiActivity size={14} /> View Console
                       </div>
                     </div>
                     
@@ -171,7 +173,6 @@ const MyProducts = () => {
                           setShowCloseModal(true); 
                         }} 
                         className="p-3.5 bg-slate-50 text-slate-400 rounded-2xl hover:bg-red-50 hover:text-red-500 transition-all border border-transparent hover:border-red-100"
-                        title="End Auction"
                       >
                         <FiXCircle size={20} />
                       </button>

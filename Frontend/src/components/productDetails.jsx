@@ -22,8 +22,10 @@ const formatTime = (date) =>
 const ProductDetails = () => {
   const { id } = useParams();
   
-  const user = JSON.parse(localStorage.getItem("user") || "{}");
-  const userId = (user.id || user._id || "").toString();
+  // 1. Get current User and normalize ID to string
+  const userStr = localStorage.getItem("user");
+  const currentUser = userStr ? JSON.parse(userStr) : null;
+  const userId = (currentUser?.id || currentUser?._id || "").toString();
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -50,20 +52,52 @@ const ProductDetails = () => {
   useEffect(() => {
     if (!id) return;
     socket.emit("joinProduct", id);
-    socket.on("productUpdated", (updated) => {
+
+    const handleUpdate = (updated) => {
+      console.log("Real-time update received for:", updated.title);
       setProduct(updated);
       setIsPriceUpdating(true);
       setTimeout(() => setIsPriceUpdating(false), 2000);
-    });
-    return () => { socket.emit("leaveProduct", id); socket.off("productUpdated"); };
+    };
+
+    socket.on("productUpdated", handleUpdate);
+
+    return () => {
+      socket.emit("leaveProduct", id);
+      socket.off("productUpdated", handleUpdate);
+    };
   }, [id]);
+
+  // 🔥 UPDATED: Logic now recalculates automatically when 'product' state changes
+  const currentPrice = product?.currentBid > 0 ? product.currentBid : (product?.startingPrice || 0);
+  const minNextBid = currentPrice + (product?.bidIncrement || 0);
+  
+  // Normalize IDs for comparison to prevent [Object] vs "String" mismatch
+  const sellerIdStr = (product?.sellerId?._id || product?.sellerId || "").toString();
+  const isOwner = sellerIdStr === userId && userId !== "";
+
+  const registrationRecord = product?.registeredUsers?.find(u => {
+    const regUserId = (u.userId?._id || u.userId || "").toString();
+    return regUserId === userId && regUserId !== "";
+  });
+
+  const isRegistered = !!registrationRecord;
+  const currentHighestBidder = (product?.highestBidderId?._id || product?.highestBidderId || "").toString();
+  const isHighestBidder = currentHighestBidder === userId && userId !== "";
+  
+  // Disable logic
+  const isAmountTooLow = Number(bidAmount) < minNextBid;
+  const isBidButtonDisabled = isHighestBidder || isAmountTooLow || product?.status !== "Active";
+
+  const formatDate = (dateStr) => new Date(dateStr).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 
   const handleRegisterSubmit = async () => {
     if (!tempBidderName.trim()) return alert("Please enter a name.");
     try {
-      await API.post(`/products/register/${id}`, { bidderName: tempBidderName });
+      const res = await API.post(`/products/register/${id}`, { bidderName: tempBidderName });
+      setProduct(res.data.product || res.data); 
+      setTempBidderName(""); 
       setShowRegModal(false);
-      await fetchProduct(); 
     } catch (err) {
       alert(err.response?.data?.message || "Registration failed");
     }
@@ -72,7 +106,7 @@ const ProductDetails = () => {
   const handlePlaceBid = async () => {
     try {
       await API.post(`/bids/${id}`, { amount: Number(bidAmount) });
-      setBidAmount(""); // Reset after success
+      setBidAmount(""); 
     } catch (err) {
       alert(err.response?.data?.message || "Bidding failed");
     }
@@ -80,23 +114,6 @@ const ProductDetails = () => {
 
   if (loading) return <div className="p-20 text-center animate-pulse font-black text-slate-400 uppercase tracking-widest">Syncing Auction Floor...</div>;
   if (error || !product) return <div className="p-20 text-center"><p className="text-red-500 mb-4">{error}</p><Link to="/products" className="text-blue-600 font-bold underline">Back to Market</Link></div>;
-
-  const currentPrice = product?.currentBid > 0 ? product.currentBid : (product?.startingPrice || 0);
-  const minNextBid = currentPrice + (product?.bidIncrement || 0);
-  
-  const isOwner = (product.sellerId?._id || product.sellerId || "").toString() === userId;
-  const registrationRecord = product.registeredUsers?.find(u => {
-    const dbId = (u.userId?._id || u.userId || "").toString().trim();
-    return dbId === userId && dbId !== "";
-  });
-
-  const isRegistered = !!registrationRecord;
-  const formatDate = (dateStr) => new Date(dateStr).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
-
-  // 🔥 DISABLE LOGIC CALCULATION
-  const isHighestBidder = product.highestBidderId === userId;
-  const isAmountTooLow = Number(bidAmount) < minNextBid;
-  const isBidButtonDisabled = isHighestBidder || isAmountTooLow;
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] pb-20">
@@ -245,7 +262,6 @@ const ProductDetails = () => {
                             </div>
                             <input type="number" value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} placeholder={`Min ₹${minNextBid}`} className="w-full p-5 bg-slate-50 border rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10" />
                             
-                            {/* 🔥 UPDATED BUTTON WITH DISABLE LOGIC */}
                             <button 
                               disabled={isBidButtonDisabled} 
                               onClick={handlePlaceBid} 

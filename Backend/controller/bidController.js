@@ -11,6 +11,8 @@ import { io } from "../index.js";
 /**
  * 🔨 PLACE BID (The Real-Time Engine)
  */
+// --- productController.js ---
+
 export const placeBid = async (req, res) => {
   try {
     const { id } = req.params;
@@ -51,18 +53,28 @@ export const placeBid = async (req, res) => {
       product.endTime = new Date(endTime.getTime() + (product.extensionDuration * 1000));
       product.isExtended = true;
     }
+    
+    // Save the product changes
     await product.save();
+    
+    // Convert to plain object for clean Socket transmission
+    const cleanProduct = product.toObject();
 
-    // 4. 🔥 POPULATE EMAIL FOR REAL-TIME LEDGER
+    // 4. Populate Bid for the Ledger
     const populatedBid = await Bid.findById(newBid._id)
-      .populate("bidderId", "email"); // Pull only the email
+      .populate("bidderId", "email");
 
-    // 5. SOCKET EMITS
-    io.to(id).emit("productUpdated", product);
-    io.to(id).emit("bidPlaced", populatedBid); // Sends the bid with the email object
-    io.emit("productUpdated", product);
+    // 5. 🔥 SOCKET EMITS (Covers all pages)
+    
+    // ✅ Keep this: Updates the Product Details page (Private Room)
+    io.to(id).emit("productUpdated", cleanProduct);
+    io.to(id).emit("bidPlaced", populatedBid); 
 
-    res.status(200).json({ message: "Bid placed", product, bid: populatedBid });
+    // ✅ Change this: Updates the Live Market & Seller Hub (Global)
+    // This matches the socket.on("globalProductUpdate", ...) in your gallery pages
+    io.emit("globalProductUpdate", cleanProduct);
+
+    res.status(200).json({ message: "Bid placed", product: cleanProduct, bid: populatedBid });
   } catch (error) {
     res.status(500).json({ message: "Bidding failed", error: error.message });
   }

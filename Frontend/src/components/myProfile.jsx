@@ -29,17 +29,26 @@ const Profile = () => {
   // --- PAYMENT TIMEOUT CONFIG (24 Hours) ---
   const PAYMENT_WINDOW = 24 * 60 * 60 * 1000;
 
-  useEffect(() => { fetchData(); }, []);
-
+  
   const fetchData = async () => {
-    try {
-      const res = await API.get("/profile"); 
-      setUser(res.data.user);
-      setWonItems(res.data.wonProducts || []); 
-      setMyListings(res.data.myProducts || []); 
-    } catch (err) { console.error("Profile Sync Error:", err); }
-  };
+  try {
+    // 1. Get the User Profile first (should be < 100ms)
+    const userRes = await API.get("/profile"); 
+    setUser(userRes.data);
 
+    // 2. Fire the items request WITHOUT 'awaiting' it immediately
+    // This lets the UI render the header while the list loads
+    API.get("/profile").then(res => {
+      setWonItems(res.data.wonProducts || []);
+      setMyListings(res.data.myProducts || []);
+    });
+    
+  } catch (err) { 
+    console.error("Profile Sync Error:", err); 
+  }
+};
+  
+  useEffect(() => { fetchData(); }, []);
   // --- NEW: FILE CHANGE HANDLER WITH BASE64 PREVIEW ---
   const onFileChange = (e) => {
     const file = e.target.files[0];

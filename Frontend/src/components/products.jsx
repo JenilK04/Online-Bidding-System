@@ -51,31 +51,36 @@ const Products = () => {
   useEffect(() => {
     fetchProducts();
 
-    // 🔥 REAL-TIME STATUS & PRICE ENGINE
     const handleRemoteUpdate = (updatedProduct) => {
       setProducts((prevProducts) => {
         const updatedList = prevProducts.map((p) => 
-          p._id === updatedProduct._id ? { ...p, ...updatedProduct } : p
+          // Use .toString() to ensure ID comparison is safe
+          p._id.toString() === updatedProduct._id.toString() 
+            ? { ...p, ...updatedProduct } 
+            : p
         );
+        
+        setLastUpdatedId(updatedProduct._id);
+        setTimeout(() => setLastUpdatedId(null), 2000);
+
         return sortProducts(updatedList);
       });
-
-      setLastUpdatedId(updatedProduct._id);
-      setTimeout(() => setLastUpdatedId(null), 2000);
     };
 
     const handleNewProduct = (newProduct) => {
       setProducts(prev => sortProducts([newProduct, ...prev]));
     };
 
+    // 🔥 Register listeners correctly inside the effect
+    socket.on("globalProductUpdate", handleRemoteUpdate);
     socket.on("productCreated", handleNewProduct);
-    socket.on("productUpdated", handleRemoteUpdate);
 
+    // Cleanup function
     return () => {
+      socket.off("globalProductUpdate", handleRemoteUpdate);
       socket.off("productCreated", handleNewProduct);
-      socket.off("productUpdated", handleRemoteUpdate);
     };
-  }, []);
+  }, []); // <--- Ensure this is properly attached to the useEffect
 
   const filteredProducts = products.filter(p => {
     const matchesSearch = p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -150,14 +155,14 @@ const Products = () => {
           <AnimatePresence mode="popLayout">
             {filteredProducts.map((product) => (
               <motion.div
-                layout
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ 
-                  opacity: 1, 
-                  scale: 1,
-                  borderColor: lastUpdatedId === product._id ? "#2563eb" : "#e2e8f0",
-                  backgroundColor: lastUpdatedId === product._id ? "#f8faff" : "#ffffff"
-                }}
+                  layout
+                  animate={{ 
+                    opacity: 1, 
+                    scale: 1,
+                    y: lastUpdatedId === product._id ? [0, -10, 0] : 0, // 🔥 Subtle jump on update
+                    borderColor: lastUpdatedId === product._id ? "#2563eb" : "#e2e8f0",
+                    boxShadow: lastUpdatedId === product._id ? "0 20px 25px -5px rgb(37 99 235 / 0.1)" : "none"
+                  }}
                 exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ duration: 0.4 }}
                 key={product._id}

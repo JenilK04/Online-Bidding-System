@@ -9,58 +9,50 @@ export const getProfile = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 1. Get user info
-    const userDoc = await User.findById(userId).select("-password");
+    // 1. Run the primary queries in parallel (Major Speed Boost)
+    const [userDoc, myProducts, wonProductsRaw, registeredProducts] = await Promise.all([
+      User.findById(userId).select("-password").lean(),
+      Product.find({ sellerId: userId }).sort({ createdAt: -1 }).lean(),
+      Product.find({ winnerId: userId, status: { $in: ["Ended", "Sold"] } }).sort({ updatedAt: -1 }).lean(),
+      Product.find({ "registeredUsers.userId": userId }).sort({ createdAt: -1 }).lean()
+    ]);
 
-    if (!userDoc) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    if (!userDoc) return res.status(404).json({ message: "User not found" });
 
-    // 2. Get User's Listings (Selling)
-    const myProducts = await Product.find({ sellerId: userId }).sort({ createdAt: -1 });
+    // 2. Fetch ALL relevant orders in ONE single query instead of a loop
+    const productIds = wonProductsRaw.map(p => p._id);
+    const orders = await Order.find({ 
+      product: { $in: productIds }, 
+      buyer: userId 
+    }).lean();
 
-    // 3. Get Won Products AND their Order details
-    const wonProductsRaw = await Product.find({ 
-      winnerId: userId,
-      status: { $in: ["Ended", "Sold"] } 
-    }).lean().sort({ updatedAt: -1 });
+    // 3. Create a Map for O(1) lookup time
+    const orderMap = {};
+    orders.forEach(order => {
+      orderMap[order.product.toString()] = order;
+    });
 
-    const wonProducts = await Promise.all(
-      wonProductsRaw.map(async (product) => {
-        const order = await Order.findOne({ 
-          product: product._id, 
-          buyer: userId 
-        });
-        
-        return {
-          ...product,
-          paymentStatus: order ? order.paymentStatus : "Pending",
-          deliveryStatus: order ? order.deliveryStatus : "Pending",
-          transactionId: order ? order.transactionId : null,
-          buyerShippingAddress: order ? order.shippingAddress : null,
-          orderId: order ? order._id : null
-        };
-      })
-    );
+    // 4. Merge data in memory (extremely fast)
+    const wonProducts = wonProductsRaw.map(product => {
+      const order = orderMap[product._id.toString()];
+      return {
+        ...product,
+        paymentStatus: order?.paymentStatus || "Pending",
+        deliveryStatus: order?.deliveryStatus || "Pending",
+        transactionId: order?.transactionId || null,
+        buyerShippingAddress: order?.shippingAddress || null,
+        orderId: order?._id || null
+      };
+    });
 
-    // 4. Registered Auctions
-    const registeredProducts = await Product.find({
-      "registeredUsers.userId": userId
-    }).sort({ createdAt: -1 });
-
-    // 🔥 THE FIX: Spread the user document into the root of the response
-    // This ensures res.data on the frontend HAS the status, role, and firstName directly.
     res.json({
-      ...userDoc._doc, // Spreads firstName, status, role, etc., into the main object
+      ...userDoc, 
       myProducts,
       wonProducts,
       registeredProducts
     });
 
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to load profile",
-      error: error.message
-    });
+    res.status(500).json({ message: "Failed to load profile", error: error.message });
   }
 };

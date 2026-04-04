@@ -184,6 +184,15 @@ const Navbar = () => {
               
               {token ? (
                 <>
+                  {/* Added Profile Link for Mobile View */}
+                  <Link
+                    to="/my-profile"
+                    onClick={() => setIsOpen(false)}
+                    className="flex items-center gap-3 p-4 rounded-xl text-slate-700 bg-slate-50 hover:bg-blue-50 font-bold border border-slate-100"
+                  >
+                    <FiUser className="text-blue-600" /> My Profile
+                  </Link>
+
                   {authLinks.map((link) => (
                     <Link
                       key={link.path}
