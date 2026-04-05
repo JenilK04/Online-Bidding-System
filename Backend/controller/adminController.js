@@ -1,7 +1,7 @@
 import User from "../models/user.js";
 import Product from "../models/products.js";
 import Order from "../models/order.js";
-
+import Bid from "../models/Bid.js";
 /**
  * 📊 GET ADMIN STATS
  * Aggregates data for the Command Center cards.
@@ -212,3 +212,56 @@ export const updateUserStatus = async (req, res) => {
     });
   }
 };
+
+// @desc    Delete an asset/product
+// @route   DELETE /api/admin/events/:id
+// @access  Private/Admin
+export const deleteEvent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const event = await Product.findById(id);
+    if (!event) {
+      return res.status(404).json({ message: "Asset not found" });
+    }
+
+    // Optional: Check if the auction is active before deleting
+    // if (event.status === 'Active' && event.bidsCount > 0) {
+    //   return res.status(400).json({ message: "Cannot delete an active auction with bids" });
+    // }
+
+    await Product.findByIdAndDelete(id);
+    res.status(200).json({ message: "Asset de-provisioned successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Deletion failed", error: error.message });
+  }
+};
+
+export const getAdminProductDetail = async (req, res) => {
+  try {
+    // 1. Fetch the Product and basic info
+    const product = await Product.findById(req.params.id)
+      .populate("sellerId", "name email")
+      .populate("registeredUsers.userId", "name email");
+
+    if (!product) {
+      return res.status(404).json({ message: "Asset not found in ledger" });
+    }
+
+    // 2. Fetch all Bids associated with this Product ID
+    // We use 'productId' here because that's what is in your Bid Schema
+    const bidHistory = await Bid.find({ productId: req.params.id })
+      .sort({ amount: -1 }) // Sort by highest bid first
+      .populate("bidderId", "name email");
+
+    // 3. Combine them into one response
+    res.status(200).json({
+      ...product._doc, // Spreads the product data
+      bids: bidHistory  // Manually attaches the history as 'bids'
+    });
+    
+  } catch (error) {
+    console.error("Admin Detail Error:", error);
+    res.status(500).json({ message: "Server Error", error: error.message });
+  }
+}

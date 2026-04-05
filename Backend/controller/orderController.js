@@ -87,25 +87,32 @@ export const markAsShipped = async (req, res) => {
     const { productId } = req.params;
     const { trackingNumber, carrier } = req.body;
 
-    // 1. Find the order associated with this product
     const order = await Order.findOne({ product: productId });
     if (!order) return res.status(404).json({ message: "Order not found" });
 
-    // 2. Security: Ensure only the seller can ship
+    // 1. Validation: Prevent shipping unpaid or already shipped items
+    if (order.paymentStatus !== "Paid") {
+      return res.status(400).json({ message: "Cannot ship an unpaid order." });
+    }
+    if (order.deliveryStatus === "Shipped") {
+      return res.status(400).json({ message: "Item is already marked as shipped." });
+    }
+
+    // 2. Security: Ensure the logged-in user is the seller
     if (order.seller.toString() !== req.user.id) {
       return res.status(403).json({ message: "Unauthorized to ship this item" });
     }
 
-    // 3. Update Order Status
+    // 3. Perform Updates
     order.deliveryStatus = "Shipped";
     order.trackingNumber = trackingNumber;
     order.carrier = carrier || "Standard Shipping";
     order.shippedAt = new Date();
     await order.save();
 
-    // 4. Sync Product Status for Buyer Visibility
     await Product.findByIdAndUpdate(productId, { 
-      deliveryStatus: "Shipped" 
+      deliveryStatus: "Shipped",
+      trackingNumber: trackingNumber // Helpful to store on Product for quick lookup
     });
 
     res.status(200).json({ message: "Item marked as Shipped", order });

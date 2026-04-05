@@ -39,6 +39,46 @@ const AdminFinance = () => {
     navigate("/login");
   };
 
+  // --- NEW: CSV EXPORT LOGIC ---
+  const exportToCSV = () => {
+    if (!data.transactions || data.transactions.length === 0) {
+      return alert("No transaction data available to export.");
+    }
+
+    // 1. Define Headers
+    const headers = ["Transaction ID", "Product Title", "Gross Amount (INR)", "Platform Fee (5%)", "Status"];
+
+    // 2. Format Rows
+    const rows = data.transactions.map(tx => [
+      `TXN-${tx._id.toUpperCase()}`,
+      `"${tx.title.replace(/"/g, '""')}"`, // Escape quotes for CSV safety
+      tx.currentBid,
+      (tx.currentBid * 0.05).toFixed(2),
+      "Cleared"
+    ]);
+
+    // 3. Build CSV String
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.join(","))
+    ].join("\n");
+
+    // 4. Trigger Download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    
+    const timestamp = new Date().toISOString().split('T')[0];
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Finance_Ledger_${timestamp}.csv`);
+    link.style.visibility = "hidden";
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url); // Clean up memory
+  };
+
   const cards = [
     { label: "Gross Volume", val: `₹${data.totalSalesVolume.toLocaleString('en-IN')}`, icon: <FiTrendingUp />, color: "text-blue-600", bg: "bg-blue-50" },
     { label: "Net Revenue (5%)", val: `₹${data.platformCommission.toLocaleString('en-IN')}`, icon: <FiDollarSign />, color: "text-emerald-600", bg: "bg-emerald-50" },
@@ -97,13 +137,18 @@ const AdminFinance = () => {
 
       {/* --- MAIN CONTENT --- */}
       <main className="flex-grow p-10 overflow-y-auto">
-        <header className="flex justify-between items-center mb-10">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
           <div>
             <h1 className="text-4xl font-black text-slate-900 tracking-tighter">Finance Ledger</h1>
             <p className="text-slate-500 font-medium uppercase text-[10px] tracking-widest">Platform Revenue & Transaction Audit</p>
           </div>
-          <button className="flex items-center gap-2 bg-white border border-slate-200 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition shadow-sm">
-            <FiDownloadCloud /> Export CSV
+          
+          {/* UPDATED: EXPORT BUTTON */}
+          <button 
+            onClick={exportToCSV}
+            className="flex items-center gap-2 bg-white border border-slate-200 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 hover:border-blue-200 transition shadow-sm active:scale-95"
+          >
+            <FiDownloadCloud className="text-blue-600" /> Export CSV
           </button>
         </header>
 
@@ -132,32 +177,36 @@ const AdminFinance = () => {
             <span className="text-[9px] font-black bg-emerald-100 text-emerald-600 px-3 py-1 rounded-full uppercase tracking-tighter">Gateway Active</span>
           </div>
           
-          <table className="w-full text-left">
-            <thead className="bg-slate-50/50">
-              <tr>
-                <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Transaction ID</th>
-                <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Product</th>
-                <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Amount</th>
-                <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Fee (5%)</th>
-                <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.transactions.map((tx, i) => (
-                <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
-                  <td className="px-8 py-6 font-mono text-[10px] text-slate-400">TXN-{tx._id.substring(18, 24).toUpperCase()}</td>
-                  <td className="px-8 py-6 font-black text-slate-900 text-sm truncate max-w-[200px]">{tx.title}</td>
-                  <td className="px-8 py-6 font-black text-slate-900">₹{tx.currentBid.toLocaleString('en-IN')}</td>
-                  <td className="px-8 py-6 font-bold text-emerald-600">+₹{(tx.currentBid * 0.05).toLocaleString('en-IN')}</td>
-                  <td className="px-8 py-6">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-emerald-500 uppercase">
-                      <FiCheck /> Cleared
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-slate-50/50">
+                <tr>
+                  <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Transaction ID</th>
+                  <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Product</th>
+                  <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Amount</th>
+                  <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Fee (5%)</th>
+                  <th className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.transactions.map((tx, i) => (
+                  <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
+                    <td className="px-8 py-6 font-mono text-[10px] text-slate-400 uppercase">
+                      TXN-{tx._id.substring(tx._id.length - 6).toUpperCase()}
+                    </td>
+                    <td className="px-8 py-6 font-black text-slate-900 text-sm truncate max-w-[200px]">{tx.title}</td>
+                    <td className="px-8 py-6 font-black text-slate-900">₹{tx.currentBid.toLocaleString('en-IN')}</td>
+                    <td className="px-8 py-6 font-bold text-emerald-600">+₹{(tx.currentBid * 0.05).toLocaleString('en-IN')}</td>
+                    <td className="px-8 py-6">
+                      <div className="flex items-center gap-2 text-[10px] font-black text-emerald-500 uppercase">
+                        <FiCheck className="stroke-[3px]" /> Cleared
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           {data.transactions.length === 0 && (
             <div className="py-20 text-center">

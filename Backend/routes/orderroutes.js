@@ -17,7 +17,7 @@ router.post("/create", verifyToken, createOrder);
 // 💳 STEP 2: FINALIZE PAYMENT
 // Triggered when the "Pay" button is clicked after mock card validation
 router.patch("/finalize/:orderId", verifyToken , finalizePayment);
-router.patch("/ship/:orderId", verifyToken, markAsShipped);
+router.patch("/ship/:productId", verifyToken, markAsShipped);
 router.get("/manage/:productId", verifyToken, getManageOrder);
 
 

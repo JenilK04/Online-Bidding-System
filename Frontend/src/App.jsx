@@ -12,6 +12,7 @@ import AdminUsers from "./components/Admin/Adminusers";
 import AdminEvents from "./components/Admin/adminEvents";
 import AdminFinance from "./components/Admin/adminFinaces"; 
 import SellerManagement from "./components/sellerManagement";
+import AdminProductDetail from "./components/Admin/adminProductDetail";
 import ProtectedRoute from "./routes/protectedroutes";  
 import ProductDetails from "./components/productDetails";
 import AdminProtectedRoute from "./routes/adminProtectedRoute";
@@ -146,6 +147,15 @@ const AppContent = () => {
             element={
               <AdminProtectedRoute>
                 <AdminFinance />
+              </AdminProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/product/:id"
+            element={
+              <AdminProtectedRoute>
+                <AdminProductDetail />
               </AdminProtectedRoute>
             }
           />

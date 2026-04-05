@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, use } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { 
@@ -29,6 +29,19 @@ const AdminEvents = () => {
       setLoading(false);
     }
   };
+
+  const handleDelete = async (eventId, title) => {
+  if (window.confirm(`Are you sure you want to permanently delete "${title}"?`)) {
+    try {
+      await API.delete(`/admin/events/${eventId}`);
+      // Refresh the list after deletion
+      setEvents(events.filter(event => event._id !== eventId));
+    } catch (err) {
+      console.error("Deletion Error:", err);
+      alert("Failed to delete the asset.");
+    }
+  }
+};
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -170,13 +183,14 @@ const AdminEvents = () => {
                   </td>
                   <td className="px-8 py-6">
                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-3 bg-white text-slate-400 hover:text-blue-600 border border-slate-200 rounded-xl transition shadow-sm">
+                      <button onClick={() => navigate(`/admin/product/${event._id} `)}
+                      className="p-3 bg-white text-slate-400 hover:text-blue-600 border border-slate-200 rounded-xl transition shadow-sm">
                         <FiEye size={16} />
                       </button>
-                      <button className="p-3 bg-white text-slate-400 hover:text-amber-600 border border-slate-200 rounded-xl transition shadow-sm">
+                      {/* <button className="p-3 bg-white text-slate-400 hover:text-amber-600 border border-slate-200 rounded-xl transition shadow-sm">
                         <FiEdit2 size={16} />
-                      </button>
-                      <button className="p-3 bg-white text-slate-400 hover:text-red-600 border border-slate-200 rounded-xl transition shadow-sm">
+                      </button> */}
+                      <button onClick={() => handleDelete(event._id, event.title)} className="p-3 bg-white text-slate-400 hover:text-red-600 border border-slate-200 rounded-xl transition shadow-sm">
                         <FiTrash2 size={16} />
                       </button>
                     </div>
