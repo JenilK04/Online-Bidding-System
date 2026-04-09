@@ -57,6 +57,11 @@ const orderSchema = new mongoose.Schema(
     },
 
     // 📑 AUDIT TRAIL
+    razorpayOrderId: { 
+      type: String, 
+      unique: true, 
+      sparse: true // Only exists once the Razorpay order is created
+    },
     transactionId: { 
       type: String, 
       unique: true, 

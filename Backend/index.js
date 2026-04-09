@@ -12,12 +12,12 @@ import productRoutes from './routes/productsroutes.js';
 import profileRoutes from './routes/profileRoute.js';
 import bidRoutes from './routes/bidsRoute.js';
 import adminRoutes from "./routes/adminRoute.js";
-import orderRoutes from "./routes/orderroutes.js";
 
 // Models
 import Product from "./models/products.js";
 
 dotenv.config();
+import orderRoutes from "./routes/orderroutes.js";
 import './jobs/auctionStartReminder.js';
 const app = express();
 const server = http.createServer(app);
